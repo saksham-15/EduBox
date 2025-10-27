@@ -1,5 +1,5 @@
 // This is the URL of your Python server.
-const API_URL = 'http://127.0.0.1:5000';
+const API_URL = 'https://edubox-8d1v.onrender.com';
 
 // A variable to keep track of our quiz state
 let currentQuestionId = null;
@@ -170,4 +170,5 @@ function addMessageToChat(message, sender) {
     
     // Scroll to the bottom
     chatWindow.scrollTop = chatWindow.scrollHeight;
+
 }
