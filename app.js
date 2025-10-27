@@ -170,5 +170,4 @@ function addMessageToChat(message, sender) {
     
     // Scroll to the bottom
     chatWindow.scrollTop = chatWindow.scrollHeight;
-
 }
