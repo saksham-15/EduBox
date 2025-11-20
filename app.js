@@ -1,6 +1,6 @@
 // --- CONFIGURATION ---
 const API_URL = 'https://edubox-0d1v.onrender.com';
-const TOTAL_QUESTIONS_COUNT = 10; // <--- FIX: Score will now show /10
+const TOTAL_QUESTIONS_COUNT = 10; 
 
 // Firebase Config
 const firebaseConfig = {
@@ -195,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- LOGIC UPDATED HERE: No Sudden Death ---
     async function submitQuizAnswer(ans) {
         try {
             const res = await fetch(`${API_URL}/submit_answer`, {
@@ -209,28 +210,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.correct) {
                 quizScore++;
-                const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
-                if (nextNum > 10) {
-                    endQuiz();
-                } else {
-                    setTimeout(() => getQuizQuestion('q' + nextNum), 1500);
-                }
-            } else {
-                // Sudden Death: End quiz on wrong answer
-                endQuiz();
             }
+            
+            // ALWAYS continue to next question, even if wrong
+            const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
+            
+            if (nextNum > TOTAL_QUESTIONS_COUNT) {
+                endQuiz();
+            } else {
+                setTimeout(() => getQuizQuestion('q' + nextNum), 1500);
+            }
+
         } catch (e) { console.error(e); }
     }
 
-    // --- FIXED: Score Display Logic ---
     async function endQuiz() {
         currentQuestionId = null;
-        // Shows Score / 10
         addMessageToChat(`🏁 <strong>Quiz Finished!</strong> Score: ${quizScore}/${TOTAL_QUESTIONS_COUNT}`, 'bot');
         await submitFinalScore(quizScore, TOTAL_QUESTIONS_COUNT);
     }
 
     async function submitFinalScore(s, t) {
+        // Only save score if user is signed in
         if (!userId || !username || username === 'Anonymous' || username.includes('Anonymous')) {
             addMessageToChat("Sign in to save your score to the leaderboard!", 'bot');
             return;
@@ -249,9 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchLeaderboard() {
         try {
             const res = await fetch(`${API_URL}/leaderboard`);
-            
-            // Error Handling: If backend is old, it might return 404 or 500
-            if (!res.ok) throw new Error("Server not updated");
+            if (!res.ok) throw new Error("Backend not updated");
 
             const scores = await res.json();
             leaderboardList.innerHTML = '';
@@ -265,12 +264,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const li = document.createElement('li');
                 li.className = 'list-group-item bg-dark d-flex justify-content-between text-light border-secondary';
                 let icon = i===0?'🥇':i===1?'🥈':i===2?'🥉':'•';
+                // --- Fix for Cyan Color applied in CSS, keeping structure here simple ---
                 li.innerHTML = `<div>${icon} ${s.username}</div><span class="badge bg-primary rounded-pill">${s.score}/${s.total}</span>`;
                 leaderboardList.appendChild(li);
             });
         } catch (e) { 
             console.error("Leaderboard error", e);
-            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Server update required</li>';
+            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Leaderboard Unavailable</li>';
         }
     }
 
