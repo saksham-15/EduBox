@@ -1,9 +1,7 @@
 // --- CONFIGURATION ---
-
-// Your live Render Backend URL
 const API_URL = 'https://edubox-0d1v.onrender.com';
 
-// Firebase Configuration (Keys successfully extracted and inserted)
+// Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyDQAlI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
   authDomain: "edubox-6918.firebaseapp.com",
@@ -14,19 +12,14 @@ const firebaseConfig = {
   measurementId: "G-W2LP8BP1VQ"
 };
 
-// --- STATE MANAGEMENT (Global) ---
+// --- STATE ---
 let currentQuestionId = null;
 let quizScore = 0;
 let totalQuestions = 0;
 let userId = null;
 let username = null;
 
-// --- INITIALIZATION AND MAIN LOGIC (Wrapped in DOMContentLoaded) ---
-
-// Wait for all HTML elements and Firebase SDKs to load before running code
 document.addEventListener('DOMContentLoaded', () => {
-
-    // --- DOM REFERENCES ---
     const authScreen = document.getElementById('auth-screen');
     const mainApp = document.getElementById('main-app');
     const chatWindow = document.getElementById('chat-window');
@@ -35,8 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const userDisplay = document.getElementById('user-display');
     const leaderboardList = document.getElementById('leaderboard-list');
     const authErrors = document.getElementById('auth-errors');
-
-    // Auth DOM elements
+    
+    // Auth Buttons
     const usernameInput = document.getElementById('username-input');
     const passwordInput = document.getElementById('password-input');
     const loginBtn = document.getElementById('login-btn');
@@ -44,111 +37,67 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoutBtn = document.getElementById('logout-btn');
     const anonymousBtn = document.getElementById('anonymous-btn');
 
-    // --- FIREBASE INITIALIZATION ---
-    // Initialize Firebase (This MUST happen after the SDK scripts are loaded)
+    // Initialize Firebase
     const app = firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
 
-    // --- AUTHENTICATION HANDLERS ---
+    // --- AUTH LISTENERS ---
+    loginBtn.addEventListener('click', () => handleAuth('login'));
+    signupBtn.addEventListener('click', () => handleAuth('signup'));
+    anonymousBtn.addEventListener('click', () => auth.signInAnonymously().catch(e => displayAuthError(e.message)));
+    logoutBtn.addEventListener('click', () => auth.signOut());
 
-    const displayAuthError = (message) => {
-        authErrors.textContent = message;
+    async function handleAuth(type) {
+        const name = usernameInput.value.trim();
+        const pass = passwordInput.value.trim();
+        const email = name + "@edubox.com";
+        try {
+            if (!name) throw new Error("Username required");
+            if (type === 'signup') {
+                if (pass.length < 6) throw new Error("Password must be 6+ chars");
+                const cred = await auth.createUserWithEmailAndPassword(email, pass);
+                await cred.user.updateProfile({ displayName: name });
+            } else {
+                await auth.signInWithEmailAndPassword(email, pass);
+            }
+        } catch (e) { displayAuthError(e.message); }
+    }
+
+    function displayAuthError(msg) {
+        authErrors.textContent = msg;
         authErrors.classList.remove('d-none');
         setTimeout(() => authErrors.classList.add('d-none'), 5000);
-    };
+    }
 
-    // Handle Sign Up
-    signupBtn.addEventListener('click', async () => {
-        const name = usernameInput.value.trim();
-        if (!name) return displayAuthError("Please enter a username.");
-        
-        const email = name + "@edubox.com"; 
-        const password = passwordInput.value.trim();
-        
-        if (password.length < 6) {
-            return displayAuthError("Password must be at least 6 characters.");
-        }
-        
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-            await userCredential.user.updateProfile({ displayName: name }); 
-        } catch (error) {
-            displayAuthError(error.message);
-        }
-    });
-
-    // Handle Login
-    loginBtn.addEventListener('click', async () => {
-        const name = usernameInput.value.trim();
-        if (!name) return displayAuthError("Please enter a username.");
-
-        const email = name + "@edubox.com";
-        const password = passwordInput.value.trim();
-        
-        try {
-            await auth.signInWithEmailAndPassword(email, password);
-        } catch (error) {
-            displayAuthError("Login failed: " + error.message);
-        }
-    });
-
-    // Handle Anonymous Sign In
-    anonymousBtn.addEventListener('click', async () => {
-        try {
-            await auth.signInAnonymously();
-        } catch (error) {
-            displayAuthError(error.message);
-        }
-    });
-
-    // Handle Logout
-    logoutBtn.addEventListener('click', async () => {
-        try {
-            await auth.signOut();
-        } catch (error) {
-            console.error("Logout failed:", error);
-        }
-    });
-
-    // Auth State Observer
     auth.onAuthStateChanged((user) => {
         if (user) {
-            // User is signed in
             userId = user.uid;
-            username = user.displayName || 'Anonymous User';
+            username = user.displayName || 'Anonymous';
             userDisplay.textContent = `User: ${username}`;
-            
             authScreen.style.display = 'none';
             mainApp.style.display = 'flex';
-            
             fetchLeaderboard();
-            addMessageToChat(`Welcome back, ${username}! Type 'quiz' to start.`, 'bot');
+            addMessageToChat(`<strong>Welcome ${username}!</strong><br>Type 'quiz' to start.`, 'bot');
         } else {
-            // User is signed out
             userId = null;
-            username = null;
-            
             authScreen.style.display = 'flex';
             mainApp.style.display = 'none';
         }
     });
 
-    // --- CHAT & QUIZ LOGIC ---
-
+    // --- CHAT LOGIC ---
     sendButton.addEventListener('click', sendMessage);
-    chatInput.addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') sendMessage();
-    });
+    chatInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') sendMessage(); });
 
     async function sendMessage() {
-        if (!userId) return displayAuthError("Please log in first.");
-
+        if (!userId) return;
         const text = chatInput.value.trim();
         if (!text) return;
 
         addMessageToChat(text, 'user');
         chatInput.value = '';
 
+        // If currently in a quiz, any text is an answer (fallback)
         if (currentQuestionId) {
             await submitQuizAnswer(text);
         } else {
@@ -166,66 +115,68 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             addMessageToChat(data.reply, 'bot');
 
-            if (data.reply.includes("Here is your first question:")) {
-                quizScore = 0; 
+            // --- FIXED TRIGGER LOGIC ---
+            // Check if the bot is starting a quiz. We check for keywords.
+            const reply = data.reply.toLowerCase();
+            if (reply.includes("first question") || reply.includes("question 1")) {
+                console.log("Quiz Trigger Detected!"); // Check your console for this
+                quizScore = 0;
                 totalQuestions = 0;
                 await getQuizQuestion('q1');
             }
         } catch (e) {
-            console.error(e);
-            addMessageToChat("Backend connection failed.", 'bot');
+            addMessageToChat("Backend error. Check console.", 'bot');
         }
     }
 
     async function getQuizQuestion(qid) {
-    try {
-        const res = await fetch(`${API_URL}/quiz/${qid}`);
-        const data = await res.json();
+        console.log(`Fetching question: ${qid}`);
+        try {
+            const res = await fetch(`${API_URL}/quiz/${qid}`);
+            const data = await res.json();
 
-        if (data.error) {
-            addMessageToChat(data.error, 'bot');
-            return;
+            if (data.error) { return addMessageToChat(data.error, 'bot'); }
+
+            currentQuestionId = data.id;
+            addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
+
+            // --- BUTTON RENDERING ---
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'd-grid gap-2 mt-2 mb-3'; // Bootstrap layout
+
+            if (data.options && data.options.length > 0) {
+                const letters = ['A', 'B', 'C', 'D'];
+                data.options.forEach((opt, i) => {
+                    if (i > 3) return;
+                    const btn = document.createElement('button');
+                    // IMPORTANT: These classes rely on Bootstrap being fixed in HTML
+                    btn.className = 'btn btn-outline-primary text-start'; 
+                    btn.innerText = `${letters[i]}) ${opt}`;
+                    
+                    btn.onclick = function() {
+                        // Visual feedback
+                        Array.from(btnContainer.children).forEach(b => {
+                            b.disabled = true; 
+                            b.classList.add('btn-outline-secondary');
+                            b.classList.remove('btn-outline-primary');
+                        });
+                        this.classList.remove('btn-outline-secondary');
+                        this.classList.add('btn-primary', 'text-white');
+                        
+                        submitQuizAnswer(letters[i]);
+                    };
+                    btnContainer.appendChild(btn);
+                });
+                chatWindow.appendChild(btnContainer);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            } else {
+                console.error("No options received from API", data);
+            }
+        } catch (e) {
+            console.error("Error getting question:", e);
         }
-
-        // 1. Display the Question Text
-        addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
-        currentQuestionId = data.id;
-
-        // 2. Create a Button Container
-        const btnContainer = document.createElement('div');
-        btnContainer.className = 'd-grid gap-2 mt-2 mb-3'; // Layout styling
-
-        const letters = ['A', 'B', 'C', 'D'];
-        
-        // 3. Generate a Button for each option
-        data.options.forEach((opt, i) => {
-            if (i > 3) return; 
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-outline-primary text-start'; // Style
-            btn.innerText = `${letters[i]}) ${opt}`;
-            
-            // Handle Click
-            btn.onclick = () => {
-                // Disable all buttons to prevent double-clicking
-                Array.from(btnContainer.children).forEach(b => b.disabled = true);
-                
-                // Show user selection in chat
-                addMessageToChat(letters[i], 'user');
-                
-                // Submit answer
-                submitQuizAnswer(letters[i]);
-            };
-            btnContainer.appendChild(btn);
-        });
-
-        // 4. Add buttons to the chat window
-        chatWindow.appendChild(btnContainer);
-        chatWindow.scrollTop = chatWindow.scrollHeight;
-
-    } catch (e) {
-        addMessageToChat("Failed to load question.", 'bot');
     }
-}
+
     async function submitQuizAnswer(ans) {
         totalQuestions++;
         try {
@@ -235,78 +186,65 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ question_id: currentQuestionId, user_answer: ans })
             });
             const data = await res.json();
-            addMessageToChat(data.feedback, 'bot');
+            
+            // Show feedback
+            let feedbackColor = data.correct ? 'text-success' : 'text-danger';
+            addMessageToChat(`<span class="${feedbackColor}"><strong>${data.feedback}</strong></span>`, 'bot');
 
             if (data.correct) {
                 quizScore++;
                 const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
-                
                 if (nextNum > 10) {
-                    addMessageToChat(`Quiz Complete! Score: ${quizScore}/${totalQuestions}`, 'bot');
-                    await submitFinalScore(quizScore, totalQuestions);
-                    currentQuestionId = null;
+                    endQuiz();
                 } else {
-                    setTimeout(() => {
-                        addMessageToChat("Next question:", 'bot');
-                        getQuizQuestion('q' + nextNum);
-                    }, 1000);
+                    setTimeout(() => getQuizQuestion('q' + nextNum), 1500);
                 }
-            } else if (!data.correct && data.feedback.includes("over")) {
-                currentQuestionId = null;
-                addMessageToChat(`Game Over. Score: ${quizScore}/${totalQuestions}`, 'bot');
+            } else if (data.feedback.includes("over")) {
+                endQuiz();
             } else if (data.feedback.includes("Invalid")) {
-                totalQuestions--;
+                totalQuestions--; // Don't count invalid inputs
             }
-        } catch (e) {
-            addMessageToChat("Error submitting answer.", 'bot');
-        }
+        } catch (e) { console.error(e); }
+    }
+
+    async function endQuiz() {
+        currentQuestionId = null;
+        addMessageToChat(`🏁 <strong>Quiz Finished!</strong> Score: ${quizScore}/${totalQuestions}`, 'bot');
+        await submitFinalScore(quizScore, totalQuestions);
     }
 
     async function submitFinalScore(s, t) {
+        if (!userId || username === 'Anonymous') return;
         try {
-            const res = await fetch(`${API_URL}/score`, {
+            await fetch(`${API_URL}/score`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, username, score: s, total: t })
             });
-            const data = await res.json();
-            addMessageToChat(data.message, 'bot');
             fetchLeaderboard();
         } catch (e) { console.error(e); }
     }
 
     async function fetchLeaderboard() {
-        leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-muted">Loading...</li>';
         try {
             const res = await fetch(`${API_URL}/leaderboard`);
             const scores = await res.json();
             leaderboardList.innerHTML = '';
-            
-            if (!scores.length) {
-                leaderboardList.innerHTML = '<li class="list-group-item bg-dark">No scores yet</li>';
-                return;
-            }
-            
             scores.forEach((s, i) => {
                 const li = document.createElement('li');
-                li.className = 'list-group-item bg-dark d-flex justify-content-between text-light';
-                let medal = i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':'';
-                li.innerHTML = `<div>${medal} <strong>${s.username}</strong></div><span class="badge bg-warning rounded-pill">${s.score}/${s.total}</span>`;
+                li.className = 'list-group-item bg-dark d-flex justify-content-between text-light border-secondary';
+                let icon = i===0?'🥇':i===1?'🥈':i===2?'🥉':'•';
+                li.innerHTML = `<div>${icon} ${s.username}</div><span class="badge bg-primary rounded-pill">${s.score}/${s.total}</span>`;
                 leaderboardList.appendChild(li);
             });
-        } catch (e) {
-            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Error fetching leaderboard.</li>';
-        }
+        } catch (e) { console.error("Leaderboard error", e); }
     }
 
     function addMessageToChat(msg, sender) {
         const div = document.createElement('div');
         div.classList.add('message', sender);
-        div.innerHTML = msg.replace(/\n/g, '<br>');
+        div.innerHTML = msg;
         chatWindow.appendChild(div);
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
-}); // End of DOMContentLoaded listener
-
-
-
+});
