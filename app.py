@@ -1,170 +1,192 @@
-import os
-import firebase_admin
-from firebase_admin import credentials, firestore
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import json # <-- ADD THIS IMPORT
+// --- CONFIGURATION ---
+// IMPORTANT: This must be your live, deployed Render URL
+const API_URL = 'https://edubox-0d1v.onrender.com';
 
-# --- Initialization ---
+// A variable to keep track of our quiz state
+let currentQuestionId = null;
 
-# Initialize Flask App
-app = Flask(__name__)
-CORS(app) 
+// Get references to the HTML elements
+const chatWindow = document.getElementById('chat-window');
+const chatInput = document.getElementById('chat-input');
+const sendButton = document.getElementById('send-btn');
 
-# Initialize Firebase
-try:
-    # 1. Check for the environment variable (used on Render)
-    if os.environ.get('FIREBASE_CREDENTIALS_JSON'):
-        # Load the JSON string into a Python object for the Certificate function
-        cred_json = json.loads(os.environ.get('FIREBASE_CREDENTIALS_JSON'))
-        cred = credentials.Certificate(cred_json)
-        
-    # 2. Fallback to local file (used when running on your machine)
-    else:
-        cred = credentials.Certificate('firebase_key.json')
-        
-    firebase_admin.initialize_app(cred)
-    print("✅ Firebase initialized successfully.")
-    
-except FileNotFoundError:
-    print("❌ ERROR: 'firebase_key.json' not found (running locally?).")
-    exit()
-except Exception as e:
-    # If this prints on Render, it means the variable is there but malformed
-    print(f"❌ ERROR: Failed to initialize Firebase: {e}")
-    print("HINT: Check the FIREBASE_CREDENTIALS_JSON variable on Render.")
-    exit()
+// --- Event Listeners ---
+// Run the 'sendMessage' function when the 'Send' button is clicked
+sendButton.addEventListener('click', sendMessage);
 
-# Get a reference to the Firestore database
-db = firestore.client()
-
-# --- New Route for the Landing Page ---
-@app.route('/', methods=['GET'])
-def home():
-    """
-    Simple route to confirm the API is running when hitting the root URL.
-    """
-    return jsonify({
-        "status": "API Running",
-        "message": "This is the backend API. Please use the /chat or /quiz routes.",
-        "version": "1.0"
-    })
-
-# --- 1. Chatbot Engine ---
-# This part handles the "Chatbot Engine" from your proposal
-
-@app.route('/chat', methods=['POST'])
-def chat():
-    """
-    Handles conversation flow.
-    Expects a JSON request like: {"message": "hello"}
-    """
-    # Get the user's message from the request
-    data = request.json
-    user_message = data.get('message', '').lower()
-
-    # Simple conversation logic
-    if 'hello' in user_message or 'hi' in user_message:
-        response_message = "Hi there! I'm a cloud chatbot. You can ask me about services or type 'quiz' to start a game."
-    
-    elif 'quiz' in user_message or 'game' in user_message:
-        response_message = "Great! Let's start the quiz. Here is your first question:"
-
-    elif 'aws' in user_message:
-        response_message = "AWS (Amazon Web Services) is a popular cloud platform. I can quiz you on it!"
-
-    else:
-        response_message = "Sorry, I don't understand that. Try typing 'hello' or 'quiz'."
-
-    # Return the response as JSON
-    return jsonify({"reply": response_message})
-
-# --- 2. Quiz Module (Getting Questions) ---
-# This part handles the "Quiz Module" and "Data Storage" from your proposal
-
-@app.route('/quiz/<question_id>', methods=['GET'])
-def get_question(question_id):
-    """
-    Fetches a specific quiz question from Firestore.
-    The 'question_id' (e.g., 'q1') is passed in the URL.
-    """
-    try:
-        # Get the document from the 'edubox-6918' collection
-        question_ref = db.collection('edubox-6918').document(question_id)
-        doc = question_ref.get()
-
-        if not doc.exists:
-            return jsonify({"error": "Question not found"}), 404
-
-        # Get the data from the document
-        question_data = doc.to_dict()
-
-        # IMPORTANT: Remove the answer before sending it to the user!
-        # This prevents cheating.
-        if 'answer' in question_data:
-            del question_data['answer']
-        
-        # Add the question ID to the response
-        question_data['id'] = doc.id
-        
-        # Return the question and options
-        return jsonify(question_data)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# --- 3. Quiz Module (Submitting Answers) ---
-# This part evaluates answers and could be used to track scores
-
-@app.route('/submit_answer', methods=['POST'])
-def submit_answer():
-    """
-    Checks a user's answer against the correct answer in Firestore.
-    Expects a JSON request like:
-    {
-        "question_id": "q1",
-        "user_answer": "DynamoDB"
+// Run the 'sendMessage' function when the 'Enter' key is pressed
+chatInput.addEventListener('keyup', function(event) {
+    if (event.key === 'Enter') {
+        sendMessage();
     }
-    """
-    data = request.json
-    question_id = data.get('question_id')
-    user_answer = data.get('user_answer')
+});
 
-    if not question_id or not user_answer:
-        return jsonify({"error": "Missing 'question_id' or 'user_answer'"}), 400
+// --- Main Functions ---
 
-    try:
-        # Get the document again, this time to check the answer
-        question_ref = db.collection('edubox-6918').document(question_id)
-        doc = question_ref.get()
+/**
+ * Handles sending a message, either as a chat query or a quiz answer.
+ */
+async function sendMessage() {
+    const userMessage = chatInput.value.trim();
+    if (userMessage === "") return; // Don't send empty messages
 
-        if not doc.exists:
-            return jsonify({"error": "Question not found"}), 404
+    // Display the user's message in the chat
+    addMessageToChat(userMessage, 'user');
+    
+    // Clear the input box
+    chatInput.value = '';
 
-        correct_answer = doc.to_dict().get('answer')
+    // Check if we are answering a quiz question or just chatting
+    if (currentQuestionId) {
+        // If we are in a quiz, submit the answer (A, B, C, D)
+        await submitQuizAnswer(userMessage);
+    } else {
+        // If we are not in a quiz, send to the normal chatbot
+        await sendChatMessage(userMessage);
+    }
+}
 
-        # Evaluate the answer
-        if user_answer == correct_answer:
-            feedback = "Correct! Great job."
-            is_correct = True
-        else:
-            feedback = f"Sorry, the correct answer was {correct_answer}."
-            is_correct = False
+/**
+ * Sends a message to the Python '/chat' endpoint.
+ */
+async function sendChatMessage(message) {
+    try {
+        const response = await fetch(`${API_URL}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: message })
+        });
+        
+        const data = await response.json();
+        const botReply = data.reply;
+        
+        addMessageToChat(botReply, 'bot');
 
-        # Return the result
-        # Your "Output Layer" would use this info
-        return jsonify({
-            "correct": is_correct,
-            "feedback": feedback
-        })
+        // Check if the bot wants to start a quiz
+        if (botReply.includes("Here is your first question:")) {
+            // The bot triggered the quiz! Let's get the first question.
+            await getQuizQuestion('q1');
+        }
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    } catch (error) {
+        console.error('Error sending chat message:', error);
+        addMessageToChat('Sorry, I am having trouble connecting to my brain. Check the browser console for details.', 'bot');
+    }
+}
 
-# --- Running the App ---
+/**
+ * Gets a quiz question from the Python '/quiz/<id>' endpoint and formats options as A, B, C, D.
+ */
+async function getQuizQuestion(questionId) {
+    try {
+        const response = await fetch(`${API_URL}/quiz/${questionId}`);
+        const data = await response.json();
 
-if __name__ == '__main__':
-    # Sets the host to '0.0.0.0' to make it accessible on your network
+        if (data.error) {
+            addMessageToChat(data.error, 'bot');
+            return;
+        }
 
-    app.run(host='0.0.0.0', port=5000, debug=True)    
+        // --- NEW LOGIC: Display options with A, B, C, D prefixes ---
+        let questionText = `Question: ${data.question}\n\nChoose an option (A, B, C, D):\n`;
+        const letters = ['A', 'B', 'C', 'D'];
+        
+        data.options.forEach((option, index) => {
+            if (index < letters.length) { 
+                questionText += `${letters[index]}) ${option}\n`;
+            }
+        });
+        
+        addMessageToChat(questionText, 'bot');
+        
+        // Remember which question we are on
+        currentQuestionId = data.id;
 
+    } catch (error) {
+        console.error('Error getting quiz question:', error);
+        addMessageToChat('Failed to load the quiz question.', 'bot');
+    }
+}
+
+/**
+ * Submits an answer (A, B, C, or D) to the Python '/submit_answer' endpoint.
+ */
+async function submitQuizAnswer(userAnswer) {
+    try {
+        const response = await fetch(`${API_URL}/submit_answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question_id: currentQuestionId,
+                user_answer: userAnswer
+            })
+        });
+
+        const data = await response.json();
+        
+        // 1. Display the feedback 
+        addMessageToChat(data.feedback, 'bot');
+
+        // 2. Check if the answer was correct
+        if (data.correct) {
+            
+            // Get the number from the current question ID (e.g., "q1" -> 1)
+            const currentNum = parseInt(currentQuestionId.replace('q', ''));
+            
+            // Increment to get the next question number
+            const nextNum = currentNum + 1;
+
+            // Check if they finished all 10 questions
+            if (nextNum > 10) {
+                addMessageToChat("Congratulations! You've completed all 10 questions!", 'bot');
+                currentQuestionId = null; // Quiz is over, reset.
+            } else {
+                // Get the next question ID (e.g., "q2")
+                const nextQuestionId = 'q' + nextNum;
+                
+                // Wait 1 second for a natural feel, then show the next question
+                setTimeout(() => {
+                    addMessageToChat("Here's your next question:", 'bot');
+                    getQuizQuestion(nextQuestionId); // This will fetch q2, q3, etc.
+                }, 1000); 
+            }
+
+        } else if (!data.correct && data.error === undefined) {
+            // Answer was wrong or invalid. Reset the quiz state only if it's a defined end-of-quiz state.
+            // The backend sends specific feedback, so we just reset the state.
+            addMessageToChat('Quiz ended. Type "quiz" to try again.', 'bot');
+            currentQuestionId = null;
+        } else {
+            // If the backend sent an error message (like invalid input), we don't reset the state 
+            // and let the user try again for the same question.
+        }
+
+    } catch (error) {
+        console.error('Error submitting answer:', error);
+        addMessageToChat('Failed to submit answer due to a network error.', 'bot');
+    }
+}
+
+// --- Utility Function ---
+
+/**
+ * Adds a new message to the chat window UI and scrolls to the bottom.
+ */
+function addMessageToChat(message, sender) {
+    // Create a new 'div' element
+    const messageElement = document.createElement('div');
+    
+    // Add CSS classes (these map to the classes in index.html)
+    messageElement.classList.add('message');
+    messageElement.classList.add(sender); // 'user' or 'bot'
+    
+    // Set the text, replacing newline characters with HTML breaks
+    // (We use innerHTML because the quiz question has multiple line breaks)
+    messageElement.innerHTML = message.replace(/\n/g, '<br>');
+    
+    // Add the new message to the chat window
+    chatWindow.appendChild(messageElement);
+    
+    // Scroll to the bottom
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+}
