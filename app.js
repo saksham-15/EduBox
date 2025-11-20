@@ -3,9 +3,9 @@
 // Your live Render Backend URL
 const API_URL = 'https://edubox-0d1v.onrender.com';
 
-// Firebase Configuration (Extracted from your screenshot)
+// Firebase Configuration (Keys successfully extracted and inserted)
 const firebaseConfig = {
-  apiKey: "AIzaSyDQAlI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
+  apiKey: "AIzaSyDQA-LI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
   authDomain: "edubox-6918.firebaseapp.com",
   projectId: "edubox-6918",
   storageBucket: "edubox-6918.firebasestorage.app",
@@ -275,9 +275,3 @@ function addMessageToChat(msg, sender) {
     chatWindow.appendChild(div);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
-
-
-
-
-
-
