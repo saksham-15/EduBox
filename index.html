@@ -27,11 +27,11 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         }
 
-        /* Chat Window Styling (Fixes Scrollbar & Alignment) */
+        /* Chat Window Styling */
         #chat-window { 
             height: 400px; 
             overflow-y: auto; 
-            overflow-x: hidden; /* Removes the horizontal scrollbar */
+            overflow-x: hidden; 
             padding: 15px; 
             background: #252526; 
             border-bottom: 1px solid #3d3d3d;
@@ -39,7 +39,6 @@
             flex-direction: column;
         }
 
-        /* Aligns Button Groups to the Left */
         .options-container {
             width: 85%; 
             float: left; 
@@ -79,6 +78,13 @@
             overflow-y: auto;
         }
         
+        /* --- NEW: Leaderboard Text Color Change --- */
+        #leaderboard-list .list-group-item {
+            color: #0dcaf0 !important; /* Cyan Color - Change this hex code to any color you like! */
+            font-weight: 500;
+            border-color: #495057; /* Subtle border color */
+        }
+
         #auth-screen {
             position: absolute;
             top: 0;
