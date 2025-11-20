@@ -187,13 +187,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            let text = `Question: ${data.question}\n\nChoose (A, B, C, D):\n`;
+            let text = `Question: **${data.question}**\n\nChoose (A, B, C, D):\n\n`; // Added **markdown** and extra \n
+
             const letters = ['A','B','C','D'];
+            
             data.options.forEach((opt, i) => {
-                if(i < 4) text += `${letters[i]}) ${opt}\n`;
+                if(i < 4) text += `**${letters[i]}** - ${opt}\n`; // Added **bolding** and clearer formatting
             });
 
             addMessageToChat(text, 'bot');
+            currentQuestionId = data.id;
+        } catch (e) {
             currentQuestionId = data.id;
         } catch (e) {
             addMessageToChat("Failed to load question.", 'bot');
@@ -281,3 +285,4 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 }); // End of DOMContentLoaded listener
+
