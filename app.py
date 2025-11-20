@@ -5,9 +5,11 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# --- IN-MEMORY DATABASE (Fast & Reliable for Demo) ---
+# --- IN-MEMORY DATABASE ---
+# Stores scores as long as the server is running.
 LEADERBOARD_DATA = []
 
+# Quiz Data (10 Questions)
 QUIZ_DATA = {
     "q1": {"question": "What does EC2 stand for?", "options": ["Elastic Compute Cloud", "Elastic Cloud Compute", "Easy Cloud Computing", "Electric Computer Cloud"], "answer": "Elastic Compute Cloud"},
     "q2": {"question": "Which service is used for object storage?", "options": ["EBS", "S3", "EFS", "Glacier"], "answer": "S3"},
@@ -18,10 +20,11 @@ QUIZ_DATA = {
     "q7": {"question": "What service monitors your AWS resources?", "options": ["CloudTrail", "CloudWatch", "Config", "Inspector"], "answer": "CloudWatch"},
     "q8": {"question": "Which database engine is NOT supported by RDS?", "options": ["MySQL", "PostgreSQL", "MongoDB", "Aurora"], "answer": "MongoDB"},
     "q9": {"question": "What is used to define a Virtual Network in AWS?", "options": ["VPC", "VPN", "Subnet", "Gateway"], "answer": "VPC"},
-    "q10": {"question": "Which service is best for data warehousing?", "options": ["RDS", "Redshift", "DynamoDB", "Athena"], "answer": "Redshift"}
+    "q10": {"question": "What are the three main service models of cloud computing?", "options": ["IaaS, PaaS, SaaS", "DaaS, AaaS, FaaS", "WAN, LAN, MAN", "REST, SOAP, HTTP"], "answer": "IaaS, PaaS, SaaS"}
 }
 
 # --- ROUTES ---
+
 @app.route('/')
 def home():
     return jsonify({"status": "API Active", "message": "EduBox Backend Running"})
@@ -53,12 +56,17 @@ def submit_answer():
     
     if not qid or not ans: return jsonify({"error": "Missing data"}), 400
     
-    correct = QUIZ_DATA[qid]["answer"]
+    # Find the correct answer
+    question_obj = QUIZ_DATA.get(qid)
+    if not question_obj:
+        return jsonify({"error": "Invalid Question ID"}), 404
+        
+    correct = question_obj["answer"]
     
     if ans == correct:
-        return jsonify({"correct": True, "feedback": "Correct! 🎉"})
+        return jsonify({"correct": True, "feedback": "Correct! Great job."})
     else:
-        return jsonify({"correct": False, "feedback": f"Sorry, correct answer was {correct}."})
+        return jsonify({"correct": False, "feedback": f"Sorry, the correct answer was {correct}."})
 
 @app.route('/score', methods=['POST'])
 def save_score():
@@ -69,8 +77,13 @@ def save_score():
     
     if not username or score is None: return jsonify({"message": "Invalid data"}), 400
     
+    # Add to In-Memory List
     LEADERBOARD_DATA.append({"username": username, "score": score, "total": total})
+    
+    # Sort by Score (Descending)
     LEADERBOARD_DATA.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Keep only top 10
     if len(LEADERBOARD_DATA) > 10: LEADERBOARD_DATA.pop()
         
     return jsonify({"message": "Score saved!"})
