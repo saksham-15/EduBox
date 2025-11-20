@@ -223,6 +223,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => getQuizQuestion('q' + nextNum), 1500);
                 }
             } else {
+                // --- THE FIX ---
+                // If Incorrect: End the quiz immediately (Sudden Death)
+                // This resets currentQuestionId so you can start over.
                 endQuiz();
             }
         } catch (e) { console.error(e); }
@@ -279,4 +282,5 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 });
+
 
