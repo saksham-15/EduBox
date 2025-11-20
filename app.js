@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const name = usernameInput.value.trim();
         if (!name) return displayAuthError("Please enter a username.");
         
+        // Use a unique dummy domain for Firebase authentication email
         const email = name + "@edubox.com"; 
         const password = passwordInput.value.trim();
         
@@ -71,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            // Save the user's chosen name as the display name
             await userCredential.user.updateProfile({ displayName: name }); 
         } catch (error) {
             displayAuthError(error.message);
@@ -187,20 +189,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            let text = `Question: **${data.question}**\n\nChoose (A, B, C, D):\n\n`; // Added **markdown** and extra \n
+            // --- CORRECTED QUESTION FORMATTING ---
+            // Use markdown bolding and extra newlines for better readability in chat
+            let text = `Question: **${data.question}**\n\nChoose (A, B, C, D):\n\n`; 
 
             const letters = ['A','B','C','D'];
             
             data.options.forEach((opt, i) => {
-                if(i < 4) text += `**${letters[i]}** - ${opt}\n`; // Added **bolding** and clearer formatting
+                // Limit to 4 options (A-D)
+                if(i < 4) text += `**${letters[i]}** - ${opt}\n`; 
             });
 
             addMessageToChat(text, 'bot');
             currentQuestionId = data.id;
         } catch (e) {
-            currentQuestionId = data.id;
-        } catch (e) {
-            addMessageToChat("Failed to load question.", 'bot');
+            // Fix: Removed duplicate catch block
+            addMessageToChat("Failed to load question. Check console for details.", 'bot');
+            console.error("Error loading question:", e);
         }
     }
 
@@ -220,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
                 
                 if (nextNum > 10) {
-                    addMessageToChat(`Quiz Complete! Score: ${quizScore}/${totalQuestions}`, 'bot');
+                    addMessageToChat(`Quiz Complete! Final Score: ${quizScore}/${totalQuestions}`, 'bot');
                     await submitFinalScore(quizScore, totalQuestions);
                     currentQuestionId = null;
                 } else {
@@ -233,15 +238,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentQuestionId = null;
                 addMessageToChat(`Game Over. Score: ${quizScore}/${totalQuestions}`, 'bot');
             } else if (data.feedback.includes("Invalid")) {
+                // If the answer was invalid (e.g., typing 'x'), don't count it against total questions
                 totalQuestions--;
             }
         } catch (e) {
-            addMessageToChat("Error submitting answer.", 'bot');
+            addMessageToChat("Error submitting answer. Check console for details.", 'bot');
+            console.error("Error submitting answer:", e);
         }
     }
 
     async function submitFinalScore(s, t) {
         try {
+            // This endpoint is critical for the leaderboard fix
             const res = await fetch(`${API_URL}/score`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -250,14 +258,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             addMessageToChat(data.message, 'bot');
             fetchLeaderboard();
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error("Error submitting final score:", e); 
+            addMessageToChat("Could not submit score. Check if backend /score route is running.", 'bot');
+        }
     }
 
     async function fetchLeaderboard() {
         leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-muted">Loading...</li>';
         try {
+            // This endpoint is critical for the leaderboard fix
             const res = await fetch(`${API_URL}/leaderboard`);
             const scores = await res.json();
+            
+            // Handle case where fetch returns an error object from the backend
+            if (scores.error) throw new Error(scores.error);
+
             leaderboardList.innerHTML = '';
             
             if (!scores.length) {
@@ -265,6 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
+            // Display scores with medals for top 3
             scores.forEach((s, i) => {
                 const li = document.createElement('li');
                 li.className = 'list-group-item bg-dark d-flex justify-content-between text-light';
@@ -273,16 +290,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 leaderboardList.appendChild(li);
             });
         } catch (e) {
-            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Error fetching leaderboard.</li>';
+            console.error("Error fetching leaderboard:", e);
+            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Error fetching leaderboard. (Check backend /leaderboard route)</li>';
         }
     }
 
     function addMessageToChat(msg, sender) {
         const div = document.createElement('div');
         div.classList.add('message', sender);
-        div.innerHTML = msg.replace(/\n/g, '<br>');
+        // This is where markdown/newlines are converted to HTML line breaks
+        div.innerHTML = msg.replace(/\n/g, '<br>'); 
         chatWindow.appendChild(div);
+        // Auto-scroll to the latest message
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 }); // End of DOMContentLoaded listener
-
