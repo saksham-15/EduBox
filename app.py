@@ -1,184 +1,166 @@
-import os
-import firebase_admin
-from firebase_admin import credentials, firestore
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-import json # Added for loading credentials from JSON string
+import os
 
 # --- Initialization ---
-
-# Initialize Flask App
 app = Flask(__name__)
-# Allow access from all origins (required for frontend running on GitHub Pages)
+# Allow access from all origins to fix CORS errors
 CORS(app) 
 
-# Initialize Firebase
-try:
-    # 1. Load from environment variable (REQUIRED for Render deployment)
-    if os.environ.get('FIREBASE_CREDENTIALS_JSON'):
-        print("Attempting to load credentials from environment variable...")
-        # Load the JSON string from the environment variable
-        cred_json = json.loads(os.environ.get('FIREBASE_CREDENTIALS_JSON'))
-        cred = credentials.Certificate(cred_json)
-        
-    # 2. Fallback to local file (used when running locally)
-    else:
-        print("Attempting to load credentials from local file (Dev Mode)...")
-        cred = credentials.Certificate('firebase_key.json')
-        
-    firebase_admin.initialize_app(cred)
-    print("✅ Firebase initialized successfully.")
-    
-except FileNotFoundError:
-    print("❌ ERROR: 'firebase_key.json' not found. Check local file path.")
-    exit()
-except Exception as e:
-    # This catches failures in loading the JSON or Firebase initialization
-    print(f"❌ ERROR: Failed to initialize Firebase: {e}")
-    # The exit is necessary to prevent the app from starting without a database connection
-    exit()
+# --- 1. IN-MEMORY DATA STORE (Simpler & Faster than Firestore for this step) ---
 
-# Get a reference to the Firestore database
-db = firestore.client()
+# Stores the leaderboard in the server's memory
+LEADERBOARD_DATA = []
 
-# --- 0. Root Route (to prevent 500/404 on API URL check) ---
+# Hardcoded Quiz Data to ensure it matches your Frontend logic perfectly
+QUIZ_DATA = {
+    "q1": {
+        "question": "What does EC2 stand for?", 
+        "options": ["Elastic Compute Cloud", "Elastic Cloud Compute", "Easy Cloud Computing", "Electric Computer Cloud"], 
+        "answer": "Elastic Compute Cloud"
+    },
+    "q2": {
+        "question": "Which service is used for object storage?", 
+        "options": ["EBS", "S3", "EFS", "Glacier"], 
+        "answer": "S3"
+    },
+    "q3": {
+        "question": "What AWS service is a NoSQL database?", 
+        "options": ["RDS", "DynamoDB", "S3", "EC2"], 
+        "answer": "DynamoDB"
+    },
+    "q4": {
+        "question": "Which service handles Identity and Access Management?", 
+        "options": ["IAM", "KMS", "Cognito", "WAF"], 
+        "answer": "IAM"
+    },
+    "q5": {
+        "question": "What is the serverless compute service in AWS?", 
+        "options": ["EC2", "Lambda", "Fargate", "Lightsail"], 
+        "answer": "Lambda"
+    },
+    "q6": {
+        "question": "Which service is used for Content Delivery Network (CDN)?", 
+        "options": ["CloudFront", "Route53", "Direct Connect", "VPC"], 
+        "answer": "CloudFront"
+    },
+    "q7": {
+        "question": "What service monitors your AWS resources?", 
+        "options": ["CloudTrail", "CloudWatch", "Config", "Inspector"], 
+        "answer": "CloudWatch"
+    },
+    "q8": {
+        "question": "Which database engine is NOT supported by RDS?", 
+        "options": ["MySQL", "PostgreSQL", "MongoDB", "Aurora"], 
+        "answer": "MongoDB"
+    },
+    "q9": {
+        "question": "What is used to define a Virtual Network in AWS?", 
+        "options": ["VPC", "VPN", "Subnet", "Gateway"], 
+        "answer": "VPC"
+    },
+    "q10": {
+        "question": "Which service is best for data warehousing?", 
+        "options": ["RDS", "Redshift", "DynamoDB", "Athena"], 
+        "answer": "Redshift"
+    }
+}
+
+# --- 2. ROUTES ---
 
 @app.route('/', methods=['GET'])
 def home():
-    """
-    Simple route to confirm the API is running when hitting the root URL.
-    """
     return jsonify({
-        "status": "API Running",
-        "message": "This is the backend API. Please use the /chat or /quiz routes.",
-        "version": "1.0"
+        "status": "API Running", 
+        "message": "EduBox Backend is active. Use /chat or /quiz endpoints."
     })
-
-# --- 1. Chatbot Engine ---
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    """
-    Handles conversation flow.
-    Expects a JSON request like: {"message": "hello"}
-    """
     data = request.json
     user_message = data.get('message', '').lower()
 
-    if 'hello' in user_message or 'hi' in user_message:
-        response_message = "Hi there! I'm a cloud chatbot. You can ask me about services or type 'quiz' to start a game."
-    
-    elif 'quiz' in user_message or 'game' in user_message:
-        response_message = "Great! Let's start the quiz. Here is your first question:"
-
+    # Logic to trigger the quiz
+    if 'quiz' in user_message or 'game' in user_message:
+        return jsonify({
+            "reply": "Great! Let's start the quiz. Here is your first question:",
+            "action": "start_quiz" # This helps the frontend know it's time to start
+        })
     elif 'aws' in user_message:
-        response_message = "AWS (Amazon Web Services) is a popular cloud platform. I can quiz you on it!"
-
+        return jsonify({"reply": "AWS is the leading cloud platform. Type 'quiz' to test your knowledge!"})
+    elif 'hello' in user_message or 'hi' in user_message:
+        return jsonify({"reply": "Hello! I am EduBox. Type 'quiz' to start a Cloud Computing challenge."})
     else:
-        response_message = "Sorry, I don't understand that. Try typing 'hello' or 'quiz'."
-
-    return jsonify({"reply": response_message})
-
-# --- 2. Quiz Module (Getting Questions) ---
+        return jsonify({"reply": "I didn't catch that. Try typing 'hello' or 'quiz'."})
 
 @app.route('/quiz/<question_id>', methods=['GET'])
 def get_question(question_id):
-    """
-    Fetches a specific quiz question from Firestore.
-    """
-    try:
-        # Get the document from the 'edubox-6918' collection
-        question_ref = db.collection('edubox-6918').document(question_id)
-        doc = question_ref.get()
-
-        if not doc.exists:
-            return jsonify({"error": "Question not found"}), 404
-
-        question_data = doc.to_dict()
-
-        # IMPORTANT: Remove the answer before sending it to the user!
-        if 'answer' in question_data:
-            del question_data['answer']
-        
-        question_data['id'] = doc.id
-        
-        return jsonify(question_data)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# --- 3. Quiz Module (Submitting Answers) ---
+    """ Fetches question data from our local dictionary """
+    question = QUIZ_DATA.get(question_id)
+    if question:
+        return jsonify({
+            "id": question_id, 
+            "question": question["question"], 
+            "options": question["options"]
+        })
+    return jsonify({"error": "Question not found"}), 404
 
 @app.route('/submit_answer', methods=['POST'])
 def submit_answer():
-    """
-    Checks a user's answer (A, B, C, or D) against the correct answer text in Firestore.
-    """
+    """ Validates the answer sent by the Frontend """
     data = request.json
     question_id = data.get('question_id')
-    # Clean and capitalize user input (e.g., "a" -> "A")
-    user_answer = data.get('user_answer', '').strip().upper() 
-
+    user_answer = data.get('user_answer') # This will be "DynamoDB", "S3", etc.
+    
     if not question_id or not user_answer:
-        return jsonify({"error": "Missing 'question_id' or 'user_answer'"}), 400
+        return jsonify({"error": "Missing data"}), 400
 
-    # Validate that the input is a single letter option
-    if user_answer not in ('A', 'B', 'C', 'D'):
-        # Send a specific non-crashing response for invalid input
+    question = QUIZ_DATA.get(question_id)
+    if not question:
+        return jsonify({"error": "Question not found"}), 404
+    
+    correct_answer = question["answer"]
+    
+    # Compare the text directly
+    if user_answer == correct_answer:
+        return jsonify({"correct": True, "feedback": "Correct! Great job."})
+    else:
         return jsonify({
-            "correct": False,
-            "feedback": f"Invalid input. Please respond with only A, B, C, or D."
-        }), 200
-
-    try:
-        question_ref = db.collection('edubox-6918').document(question_id)
-        doc = question_ref.get()
-
-        if not doc.exists:
-            return jsonify({"error": "Question not found"}), 404
-
-        question_data = doc.to_dict()
-        correct_answer_text = question_data.get('answer')
-        options_list = question_data.get('options')
-        
-        # --- NEW LOGIC: Map letter (A, B, C, D) to option text ---
-        
-        # Calculate the numerical index the user chose (A=0, B=1, C=2, etc.)
-        user_chosen_index = ord(user_answer) - ord('A')
-        
-        # Check if the chosen index is valid for the number of options available
-        if user_chosen_index >= len(options_list):
-             return jsonify({
-                "correct": False,
-                "feedback": "Invalid option selected for this question. Please try again."
-            }), 200
-
-        # Get the actual text of the option the user selected
-        user_selected_option_text = options_list[user_chosen_index]
-        
-        # --- Evaluate the Answer ---
-        if user_selected_option_text == correct_answer_text:
-            feedback = "Correct! Great job."
-            is_correct = True
-        else:
-            feedback = f"Sorry, that was incorrect. The correct answer was: {correct_answer_text}."
-            is_correct = False
-            
-            # The quiz ends if the answer is wrong
-            feedback += "\nThe quiz is now over."
-
-        return jsonify({
-            "correct": is_correct,
-            "feedback": feedback
+            "correct": False, 
+            "feedback": f"Sorry, the correct answer was {correct_answer}."
         })
 
-    except Exception as e:
-        # Log the full error to the Render console for debugging
-        print(f"Error processing submit_answer: {e}") 
-        return jsonify({"error": "An internal server error occurred during answer evaluation."}), 500
+# --- 3. LEADERBOARD ENDPOINTS (Required for the feature you asked for) ---
 
-# --- Running the App ---
+@app.route('/score', methods=['POST'])
+def save_score():
+    data = request.json
+    username = data.get('username')
+    score = data.get('score')
+    total = data.get('total')
+    
+    if not username or score is None:
+        return jsonify({"message": "Invalid data"}), 400
+        
+    # Add to our global list
+    LEADERBOARD_DATA.append({
+        "username": username,
+        "score": score,
+        "total": total
+    })
+    
+    # Sort: High scores at the top
+    LEADERBOARD_DATA.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Keep only top 10 scores to prevent list from getting too big
+    if len(LEADERBOARD_DATA) > 10:
+        LEADERBOARD_DATA.pop()
+        
+    return jsonify({"message": "Score saved successfully!"})
+
+@app.route('/leaderboard', methods=['GET'])
+def get_leaderboard():
+    return jsonify(LEADERBOARD_DATA)
 
 if __name__ == '__main__':
-    # This runs the app locally for development
     app.run(host='0.0.0.0', port=5000, debug=True)
