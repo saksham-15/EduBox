@@ -1,7 +1,5 @@
 // --- CONFIGURATION ---
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
- 
+
 // Your live Render Backend URL
 const API_URL = 'https://edubox-0d1v.onrender.com';
 
@@ -15,8 +13,6 @@ const firebaseConfig = {
   appId: "1:457758932957:web:792b61c58c6396128d8034",
   measurementId: "G-W2LP8BP1VQ"
 };
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 // --- STATE MANAGEMENT ---
 let currentQuestionId = null;
 let quizScore = 0;
@@ -278,6 +274,7 @@ function addMessageToChat(msg, sender) {
     chatWindow.appendChild(div);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
+
 
 
 
