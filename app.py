@@ -52,11 +52,10 @@ def get_question(qid):
 def submit_answer():
     data = request.json
     qid = data.get('question_id')
-    ans = data.get('user_answer') # Expecting text: "DynamoDB"
+    ans = data.get('user_answer') 
     
     if not qid or not ans: return jsonify({"error": "Missing data"}), 400
     
-    # Find the correct answer
     question_obj = QUIZ_DATA.get(qid)
     if not question_obj:
         return jsonify({"error": "Invalid Question ID"}), 404
@@ -77,13 +76,12 @@ def save_score():
     
     if not username or score is None: return jsonify({"message": "Invalid data"}), 400
     
-    # Add to In-Memory List
     LEADERBOARD_DATA.append({"username": username, "score": score, "total": total})
     
-    # Sort by Score (Descending)
+    # Sort by Score (High to Low)
     LEADERBOARD_DATA.sort(key=lambda x: x['score'], reverse=True)
     
-    # Keep only top 10
+    # Keep top 10
     if len(LEADERBOARD_DATA) > 10: LEADERBOARD_DATA.pop()
         
     return jsonify({"message": "Score saved!"})
