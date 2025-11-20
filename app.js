@@ -5,7 +5,7 @@ const API_URL = 'https://edubox-0d1v.onrender.com';
 
 // Firebase Configuration (Extracted from your screenshot)
 const firebaseConfig = {
-  apiKey: "AIzaSyDQALI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
+  apiKey: "AIzaSyDQAlI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
   authDomain: "edubox-6918.firebaseapp.com",
   projectId: "edubox-6918",
   storageBucket: "edubox-6918.firebasestorage.app",
@@ -275,4 +275,5 @@ function addMessageToChat(msg, sender) {
     chatWindow.appendChild(div);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
+
 
