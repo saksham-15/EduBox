@@ -1,5 +1,5 @@
 // --- CONFIGURATION ---
-
+ 
 // Your live Render Backend URL
 const API_URL = 'https://edubox-0d1v.onrender.com';
 
@@ -275,3 +275,4 @@ function addMessageToChat(msg, sender) {
     chatWindow.appendChild(div);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
+
