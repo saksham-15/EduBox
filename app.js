@@ -5,10 +5,10 @@ const API_URL = 'https://edubox-0d1v.onrender.com';
 
 // Firebase Configuration (Keys successfully extracted and inserted)
 const firebaseConfig = {
-  apiKey: "AIzaSyDQA-LI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
+  apiKey: "AIzaSyDQAlI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
   authDomain: "edubox-6918.firebaseapp.com",
   projectId: "edubox-6918",
-  storageBucket: "edubox-6918.appspot.com",
+  storageBucket: "edubox-6918.firebasestorage.app",
   messagingSenderId: "457758932957",
   appId: "1:457758932957:web:792b61c58c6396128d8034",
   measurementId: "G-W2LP8BP1VQ"
@@ -281,4 +281,5 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 }); // End of DOMContentLoaded listener
+
 
