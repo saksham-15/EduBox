@@ -3,6 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import json # <-- ADD THIS IMPORT
 
 # --- Initialization ---
 
@@ -11,21 +12,33 @@ app = Flask(__name__)
 CORS(app) 
 
 # Initialize Firebase
-# Make sure 'firebase_key.json' is in the same directory
 try:
-    cred = credentials.Certificate('firebase_key.json')
+    # 1. Check for the environment variable (used on Render)
+    if os.environ.get('FIREBASE_CREDENTIALS_JSON'):
+        # Load the JSON string into a Python object for the Certificate function
+        cred_json = json.loads(os.environ.get('FIREBASE_CREDENTIALS_JSON'))
+        cred = credentials.Certificate(cred_json)
+        
+    # 2. Fallback to local file (used when running on your machine)
+    else:
+        cred = credentials.Certificate('firebase_key.json')
+        
     firebase_admin.initialize_app(cred)
     print("✅ Firebase initialized successfully.")
+    
 except FileNotFoundError:
-    print("❌ ERROR: 'firebase_key.json' not found.")
-    print("Please download your service account key from Firebase and save it in this directory.")
+    print("❌ ERROR: 'firebase_key.json' not found (running locally?).")
     exit()
 except Exception as e:
+    # If this prints on Render, it means the variable is there but malformed
     print(f"❌ ERROR: Failed to initialize Firebase: {e}")
+    print("HINT: Check the FIREBASE_CREDENTIALS_JSON variable on Render.")
     exit()
 
 # Get a reference to the Firestore database
 db = firestore.client()
+
+# ... (rest of your Flask routes) ...
 
 # --- 1. Chatbot Engine ---
 # This part handles the "Chatbot Engine" from your proposal
@@ -142,4 +155,5 @@ def submit_answer():
 
 if __name__ == '__main__':
     # Sets the host to '0.0.0.0' to make it accessible on your network
+
     app.run(host='0.0.0.0', port=5000, debug=True)    
