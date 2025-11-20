@@ -178,28 +178,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function getQuizQuestion(qid) {
-        try {
-            const res = await fetch(`${API_URL}/quiz/${qid}`);
-            const data = await res.json();
-            
-            if (data.error) {
-                addMessageToChat(data.error, 'bot');
-                return;
-            }
+    try {
+        const res = await fetch(`${API_URL}/quiz/${qid}`);
+        const data = await res.json();
 
-            let text = `Question: ${data.question}\n\nChoose (A, B, C, D):\n`;
-            const letters = ['A','B','C','D'];
-            data.options.forEach((opt, i) => {
-                if(i < 4) text += `${letters[i]}) ${opt}\n`;
-            });
-
-            addMessageToChat(text, 'bot');
-            currentQuestionId = data.id;
-        } catch (e) {
-            addMessageToChat("Failed to load question.", 'bot');
+        if (data.error) {
+            addMessageToChat(data.error, 'bot');
+            return;
         }
-    }
 
+        // 1. Display the Question Text
+        addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
+        currentQuestionId = data.id;
+
+        // 2. Create a Button Container
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'd-grid gap-2 mt-2 mb-3'; // Layout styling
+
+        const letters = ['A', 'B', 'C', 'D'];
+        
+        // 3. Generate a Button for each option
+        data.options.forEach((opt, i) => {
+            if (i > 3) return; 
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-outline-primary text-start'; // Style
+            btn.innerText = `${letters[i]}) ${opt}`;
+            
+            // Handle Click
+            btn.onclick = () => {
+                // Disable all buttons to prevent double-clicking
+                Array.from(btnContainer.children).forEach(b => b.disabled = true);
+                
+                // Show user selection in chat
+                addMessageToChat(letters[i], 'user');
+                
+                // Submit answer
+                submitQuizAnswer(letters[i]);
+            };
+            btnContainer.appendChild(btn);
+        });
+
+        // 4. Add buttons to the chat window
+        chatWindow.appendChild(btnContainer);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+
+    } catch (e) {
+        addMessageToChat("Failed to load question.", 'bot');
+    }
+}
     async function submitQuizAnswer(ans) {
         totalQuestions++;
         try {
@@ -281,5 +307,6 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 }); // End of DOMContentLoaded listener
+
 
 
