@@ -37,9 +37,19 @@
         #chat-window { 
             height: 400px; 
             overflow-y: auto; 
+            /* FIX: Hides the bottom horizontal scrollbar */
+            overflow-x: hidden; 
             padding: 15px; 
             background: #252526; 
             border-bottom: 1px solid #3d3d3d;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* FIX: Ensures buttons don't stretch too wide */
+        .options-container {
+            width: 85%; 
+            float: left;
         }
         .message { 
             margin-bottom: 10px; 
@@ -171,5 +181,6 @@
 
 </body>
 </html>
+
 
 
