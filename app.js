@@ -1,5 +1,6 @@
 // --- CONFIGURATION ---
 const API_URL = 'https://edubox-0d1v.onrender.com';
+const TOTAL_QUESTIONS_COUNT = 10; // <--- FIX: Score will now show /10
 
 // Firebase Config
 const firebaseConfig = {
@@ -14,9 +15,8 @@ const firebaseConfig = {
 
 // --- STATE ---
 let currentQuestionId = null;
-let currentOptions = []; // <--- NEW: Stores options to handle manual typing
+let currentOptions = []; 
 let quizScore = 0;
-let totalQuestions = 0;
 let userId = null;
 let username = null;
 
@@ -110,21 +110,17 @@ document.addEventListener('DOMContentLoaded', () => {
         chatInput.value = '';
 
         if (currentQuestionId) {
-            // --- NEW: Handle Manual Typing (A, B, C, D) ---
-            // If user types "b" or "B", we map it to the full answer text
+            // Handle Manual Typing (A, B, C, D)
             const lowerText = text.toLowerCase();
             if (lowerText.length === 1 && ['a','b','c','d'].includes(lowerText)) {
                 const map = {'a': 0, 'b': 1, 'c': 2, 'd': 3};
                 const index = map[lowerText];
                 if (currentOptions && currentOptions[index]) {
-                    // Send the FULL TEXT (e.g., "DynamoDB") instead of "b"
                     await submitQuizAnswer(currentOptions[index]);
                 } else {
-                    // Fallback
                     await submitQuizAnswer(text);
                 }
             } else {
-                // User typed the full word manually
                 await submitQuizAnswer(text);
             }
         } else {
@@ -145,7 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const reply = data.reply.toLowerCase();
             if (reply.includes("first question") || reply.includes("question 1")) {
                 quizScore = 0;
-                totalQuestions = 0;
                 await getQuizQuestion('q1');
             }
         } catch (e) {
@@ -161,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.error) { return addMessageToChat(data.error, 'bot'); }
 
             currentQuestionId = data.id;
-            currentOptions = data.options; // <--- NEW: Save options for manual typing check
+            currentOptions = data.options; 
             
             addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
 
@@ -201,7 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function submitQuizAnswer(ans) {
-        totalQuestions++;
         try {
             const res = await fetch(`${API_URL}/submit_answer`, {
                 method: 'POST',
@@ -214,7 +208,6 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToChat(`<span class="${feedbackColor}"><strong>${data.feedback}</strong></span>`, 'bot');
 
             if (data.correct) {
-                // If Correct: Move to next question
                 quizScore++;
                 const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
                 if (nextNum > 10) {
@@ -223,18 +216,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => getQuizQuestion('q' + nextNum), 1500);
                 }
             } else {
-                // --- THE FIX ---
-                // If Incorrect: End the quiz immediately (Sudden Death)
-                // This resets currentQuestionId so you can start over.
+                // Sudden Death: End quiz on wrong answer
                 endQuiz();
             }
         } catch (e) { console.error(e); }
     }
 
+    // --- FIXED: Score Display Logic ---
     async function endQuiz() {
         currentQuestionId = null;
-        addMessageToChat(`🏁 <strong>Quiz Finished!</strong> Score: ${quizScore}/${totalQuestions}`, 'bot');
-        await submitFinalScore(quizScore, totalQuestions);
+        // Shows Score / 10
+        addMessageToChat(`🏁 <strong>Quiz Finished!</strong> Score: ${quizScore}/${TOTAL_QUESTIONS_COUNT}`, 'bot');
+        await submitFinalScore(quizScore, TOTAL_QUESTIONS_COUNT);
     }
 
     async function submitFinalScore(s, t) {
@@ -256,6 +249,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchLeaderboard() {
         try {
             const res = await fetch(`${API_URL}/leaderboard`);
+            
+            // Error Handling: If backend is old, it might return 404 or 500
+            if (!res.ok) throw new Error("Server not updated");
+
             const scores = await res.json();
             leaderboardList.innerHTML = '';
             
@@ -271,7 +268,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 li.innerHTML = `<div>${icon} ${s.username}</div><span class="badge bg-primary rounded-pill">${s.score}/${s.total}</span>`;
                 leaderboardList.appendChild(li);
             });
-        } catch (e) { console.error("Leaderboard error", e); }
+        } catch (e) { 
+            console.error("Leaderboard error", e);
+            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Server update required</li>';
+        }
     }
 
     function addMessageToChat(msg, sender) {
@@ -282,5 +282,3 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 });
-
-
