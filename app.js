@@ -1,192 +1,277 @@
 // --- CONFIGURATION ---
-// IMPORTANT: This must be your live, deployed Render URL
+
+// Your live Render Backend URL
 const API_URL = 'https://edubox-0d1v.onrender.com';
 
-// A variable to keep track of our quiz state
-let currentQuestionId = null;
+// Firebase Configuration (Extracted from your screenshot)
+const firebaseConfig = {
+  apiKey: "AIzaSyDQALI0D1qBkaHcqSO-xIbkXbncxQTSHd4",
+  authDomain: "edubox-6918.firebaseapp.com",
+  projectId: "edubox-6918",
+  storageBucket: "edubox-6918.firebasestorage.app",
+  messagingSenderId: "457758932957",
+  appId: "1:457758932957:web:792b61c58c6396128d8034",
+  measurementId: "G-W2LP8BP1VQ"
+};
 
-// Get references to the HTML elements
+// --- STATE MANAGEMENT ---
+let currentQuestionId = null;
+let quizScore = 0;
+let totalQuestions = 0;
+let userId = null;
+let username = null;
+
+// --- DOM REFERENCES ---
+const authScreen = document.getElementById('auth-screen');
+const mainApp = document.getElementById('main-app');
 const chatWindow = document.getElementById('chat-window');
 const chatInput = document.getElementById('chat-input');
 const sendButton = document.getElementById('send-btn');
+const userDisplay = document.getElementById('user-display');
+const leaderboardList = document.getElementById('leaderboard-list');
+const authErrors = document.getElementById('auth-errors');
 
-// --- Event Listeners ---
-// Run the 'sendMessage' function when the 'Send' button is clicked
-sendButton.addEventListener('click', sendMessage);
+// Auth DOM elements
+const usernameInput = document.getElementById('username-input');
+const passwordInput = document.getElementById('password-input');
+const loginBtn = document.getElementById('login-btn');
+const signupBtn = document.getElementById('signup-btn');
+const logoutBtn = document.getElementById('logout-btn');
+const anonymousBtn = document.getElementById('anonymous-btn');
 
-// Run the 'sendMessage' function when the 'Enter' key is pressed
-chatInput.addEventListener('keyup', function(event) {
-    if (event.key === 'Enter') {
-        sendMessage();
+// --- FIREBASE INITIALIZATION ---
+// Initialize Firebase
+const app = firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
+// --- AUTHENTICATION HANDLERS ---
+
+const displayAuthError = (message) => {
+    authErrors.textContent = message;
+    authErrors.classList.remove('d-none');
+    setTimeout(() => authErrors.classList.add('d-none'), 5000);
+};
+
+// Handle Sign Up
+signupBtn.addEventListener('click', async () => {
+    const name = usernameInput.value.trim();
+    if (!name) return displayAuthError("Please enter a username.");
+    
+    const email = name + "@edubox.com"; 
+    const password = passwordInput.value.trim();
+    
+    if (password.length < 6) {
+        return displayAuthError("Password must be at least 6 characters.");
+    }
+    
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        await userCredential.user.updateProfile({ displayName: name }); 
+    } catch (error) {
+        displayAuthError(error.message);
     }
 });
 
-// --- Main Functions ---
+// Handle Login
+loginBtn.addEventListener('click', async () => {
+    const name = usernameInput.value.trim();
+    if (!name) return displayAuthError("Please enter a username.");
 
-/**
- * Handles sending a message, either as a chat query or a quiz answer.
- */
-async function sendMessage() {
-    const userMessage = chatInput.value.trim();
-    if (userMessage === "") return; // Don't send empty messages
-
-    // Display the user's message in the chat
-    addMessageToChat(userMessage, 'user');
+    const email = name + "@edubox.com";
+    const password = passwordInput.value.trim();
     
-    // Clear the input box
+    try {
+        await auth.signInWithEmailAndPassword(email, password);
+    } catch (error) {
+        displayAuthError("Login failed: " + error.message);
+    }
+});
+
+// Handle Anonymous Sign In
+anonymousBtn.addEventListener('click', async () => {
+    try {
+        await auth.signInAnonymously();
+    } catch (error) {
+        displayAuthError(error.message);
+    }
+});
+
+// Handle Logout
+logoutBtn.addEventListener('click', async () => {
+    try {
+        await auth.signOut();
+    } catch (error) {
+        console.error("Logout failed:", error);
+    }
+});
+
+// Auth State Observer
+auth.onAuthStateChanged((user) => {
+    if (user) {
+        // User is signed in
+        userId = user.uid;
+        username = user.displayName || 'Anonymous User';
+        userDisplay.textContent = `User: ${username}`;
+        
+        authScreen.style.display = 'none';
+        mainApp.style.display = 'flex';
+        
+        fetchLeaderboard();
+        addMessageToChat(`Welcome back, ${username}! Type 'quiz' to start.`, 'bot');
+    } else {
+        // User is signed out
+        userId = null;
+        username = null;
+        
+        authScreen.style.display = 'flex';
+        mainApp.style.display = 'none';
+    }
+});
+
+// --- CHAT & QUIZ LOGIC ---
+
+sendButton.addEventListener('click', sendMessage);
+chatInput.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') sendMessage();
+});
+
+async function sendMessage() {
+    if (!userId) return displayAuthError("Please log in first.");
+
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    addMessageToChat(text, 'user');
     chatInput.value = '';
 
-    // Check if we are answering a quiz question or just chatting
     if (currentQuestionId) {
-        // If we are in a quiz, submit the answer (A, B, C, D)
-        await submitQuizAnswer(userMessage);
+        await submitQuizAnswer(text);
     } else {
-        // If we are not in a quiz, send to the normal chatbot
-        await sendChatMessage(userMessage);
+        await sendChatMessage(text);
     }
 }
 
-/**
- * Sends a message to the Python '/chat' endpoint.
- */
 async function sendChatMessage(message) {
     try {
-        const response = await fetch(`${API_URL}/chat`, {
+        const res = await fetch(`${API_URL}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: message })
+            body: JSON.stringify({ message })
         });
-        
-        const data = await response.json();
-        const botReply = data.reply;
-        
-        addMessageToChat(botReply, 'bot');
+        const data = await res.json();
+        addMessageToChat(data.reply, 'bot');
 
-        // Check if the bot wants to start a quiz
-        if (botReply.includes("Here is your first question:")) {
-            // The bot triggered the quiz! Let's get the first question.
+        if (data.reply.includes("Here is your first question:")) {
+            quizScore = 0; 
+            totalQuestions = 0;
             await getQuizQuestion('q1');
         }
-
-    } catch (error) {
-        console.error('Error sending chat message:', error);
-        addMessageToChat('Sorry, I am having trouble connecting to my brain. Check the browser console for details.', 'bot');
+    } catch (e) {
+        console.error(e);
+        addMessageToChat("Backend connection failed.", 'bot');
     }
 }
 
-/**
- * Gets a quiz question from the Python '/quiz/<id>' endpoint and formats options as A, B, C, D.
- */
-async function getQuizQuestion(questionId) {
+async function getQuizQuestion(qid) {
     try {
-        const response = await fetch(`${API_URL}/quiz/${questionId}`);
-        const data = await response.json();
-
+        const res = await fetch(`${API_URL}/quiz/${qid}`);
+        const data = await res.json();
+        
         if (data.error) {
             addMessageToChat(data.error, 'bot');
             return;
         }
 
-        // --- NEW LOGIC: Display options with A, B, C, D prefixes ---
-        let questionText = `Question: ${data.question}\n\nChoose an option (A, B, C, D):\n`;
-        const letters = ['A', 'B', 'C', 'D'];
-        
-        data.options.forEach((option, index) => {
-            if (index < letters.length) { 
-                questionText += `${letters[index]}) ${option}\n`;
-            }
+        let text = `Question: ${data.question}\n\nChoose (A, B, C, D):\n`;
+        const letters = ['A','B','C','D'];
+        data.options.forEach((opt, i) => {
+            if(i < 4) text += `${letters[i]}) ${opt}\n`;
         });
-        
-        addMessageToChat(questionText, 'bot');
-        
-        // Remember which question we are on
-        currentQuestionId = data.id;
 
-    } catch (error) {
-        console.error('Error getting quiz question:', error);
-        addMessageToChat('Failed to load the quiz question.', 'bot');
+        addMessageToChat(text, 'bot');
+        currentQuestionId = data.id;
+    } catch (e) {
+        addMessageToChat("Failed to load question.", 'bot');
     }
 }
 
-/**
- * Submits an answer (A, B, C, or D) to the Python '/submit_answer' endpoint.
- */
-async function submitQuizAnswer(userAnswer) {
+async function submitQuizAnswer(ans) {
+    totalQuestions++;
     try {
-        const response = await fetch(`${API_URL}/submit_answer`, {
+        const res = await fetch(`${API_URL}/submit_answer`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                question_id: currentQuestionId,
-                user_answer: userAnswer
-            })
+            body: JSON.stringify({ question_id: currentQuestionId, user_answer: ans })
         });
-
-        const data = await response.json();
-        
-        // 1. Display the feedback 
+        const data = await res.json();
         addMessageToChat(data.feedback, 'bot');
 
-        // 2. Check if the answer was correct
         if (data.correct) {
+            quizScore++;
+            const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
             
-            // Get the number from the current question ID (e.g., "q1" -> 1)
-            const currentNum = parseInt(currentQuestionId.replace('q', ''));
-            
-            // Increment to get the next question number
-            const nextNum = currentNum + 1;
-
-            // Check if they finished all 10 questions
             if (nextNum > 10) {
-                addMessageToChat("Congratulations! You've completed all 10 questions!", 'bot');
-                currentQuestionId = null; // Quiz is over, reset.
+                addMessageToChat(`Quiz Complete! Score: ${quizScore}/${totalQuestions}`, 'bot');
+                await submitFinalScore(quizScore, totalQuestions);
+                currentQuestionId = null;
             } else {
-                // Get the next question ID (e.g., "q2")
-                const nextQuestionId = 'q' + nextNum;
-                
-                // Wait 1 second for a natural feel, then show the next question
                 setTimeout(() => {
-                    addMessageToChat("Here's your next question:", 'bot');
-                    getQuizQuestion(nextQuestionId); // This will fetch q2, q3, etc.
-                }, 1000); 
+                    addMessageToChat("Next question:", 'bot');
+                    getQuizQuestion('q' + nextNum);
+                }, 1000);
             }
-
-        } else if (!data.correct && data.error === undefined) {
-            // Answer was wrong or invalid. Reset the quiz state only if it's a defined end-of-quiz state.
-            // The backend sends specific feedback, so we just reset the state.
-            addMessageToChat('Quiz ended. Type "quiz" to try again.', 'bot');
+        } else if (!data.correct && data.feedback.includes("over")) {
             currentQuestionId = null;
-        } else {
-            // If the backend sent an error message (like invalid input), we don't reset the state 
-            // and let the user try again for the same question.
+            addMessageToChat(`Game Over. Score: ${quizScore}/${totalQuestions}`, 'bot');
+        } else if (data.feedback.includes("Invalid")) {
+            totalQuestions--;
         }
-
-    } catch (error) {
-        console.error('Error submitting answer:', error);
-        addMessageToChat('Failed to submit answer due to a network error.', 'bot');
+    } catch (e) {
+        addMessageToChat("Error submitting answer.", 'bot');
     }
 }
 
-// --- Utility Function ---
+async function submitFinalScore(s, t) {
+    try {
+        const res = await fetch(`${API_URL}/score`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, username, score: s, total: t })
+        });
+        const data = await res.json();
+        addMessageToChat(data.message, 'bot');
+        fetchLeaderboard();
+    } catch (e) { console.error(e); }
+}
 
-/**
- * Adds a new message to the chat window UI and scrolls to the bottom.
- */
-function addMessageToChat(message, sender) {
-    // Create a new 'div' element
-    const messageElement = document.createElement('div');
-    
-    // Add CSS classes (these map to the classes in index.html)
-    messageElement.classList.add('message');
-    messageElement.classList.add(sender); // 'user' or 'bot'
-    
-    // Set the text, replacing newline characters with HTML breaks
-    // (We use innerHTML because the quiz question has multiple line breaks)
-    messageElement.innerHTML = message.replace(/\n/g, '<br>');
-    
-    // Add the new message to the chat window
-    chatWindow.appendChild(messageElement);
-    
-    // Scroll to the bottom
+async function fetchLeaderboard() {
+    leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-muted">Loading...</li>';
+    try {
+        const res = await fetch(`${API_URL}/leaderboard`);
+        const scores = await res.json();
+        leaderboardList.innerHTML = '';
+        
+        if (!scores.length) {
+            leaderboardList.innerHTML = '<li class="list-group-item bg-dark">No scores yet</li>';
+            return;
+        }
+        
+        scores.forEach((s, i) => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item bg-dark d-flex justify-content-between text-light';
+            let medal = i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':'';
+            li.innerHTML = `<div>${medal} <strong>${s.username}</strong></div><span class="badge bg-warning rounded-pill">${s.score}/${s.total}</span>`;
+            leaderboardList.appendChild(li);
+        });
+    } catch (e) {
+        leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Error</li>';
+    }
+}
+
+function addMessageToChat(msg, sender) {
+    const div = document.createElement('div');
+    div.classList.add('message', sender);
+    div.innerHTML = msg.replace(/\n/g, '<br>');
+    chatWindow.appendChild(div);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
