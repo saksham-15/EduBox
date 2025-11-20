@@ -1,4 +1,5 @@
-// This is the URL of your Python server.
+// --- CONFIGURATION ---
+// IMPORTANT: This must be your live, deployed Render URL
 const API_URL = 'https://edubox-0d1v.onrender.com';
 
 // A variable to keep track of our quiz state
@@ -22,7 +23,9 @@ chatInput.addEventListener('keyup', function(event) {
 
 // --- Main Functions ---
 
-// 1. Called when the user clicks 'Send' or presses 'Enter'
+/**
+ * Handles sending a message, either as a chat query or a quiz answer.
+ */
 async function sendMessage() {
     const userMessage = chatInput.value.trim();
     if (userMessage === "") return; // Don't send empty messages
@@ -35,7 +38,7 @@ async function sendMessage() {
 
     // Check if we are answering a quiz question or just chatting
     if (currentQuestionId) {
-        // If we are in a quiz, submit the answer
+        // If we are in a quiz, submit the answer (A, B, C, D)
         await submitQuizAnswer(userMessage);
     } else {
         // If we are not in a quiz, send to the normal chatbot
@@ -43,7 +46,9 @@ async function sendMessage() {
     }
 }
 
-// 2. Sends a message to your Python '/chat' endpoint
+/**
+ * Sends a message to the Python '/chat' endpoint.
+ */
 async function sendChatMessage(message) {
     try {
         const response = await fetch(`${API_URL}/chat`, {
@@ -65,11 +70,13 @@ async function sendChatMessage(message) {
 
     } catch (error) {
         console.error('Error sending chat message:', error);
-        addMessageToChat('Sorry, I am having trouble connecting to my brain.', 'bot');
+        addMessageToChat('Sorry, I am having trouble connecting to my brain. Check the browser console for details.', 'bot');
     }
 }
 
-// 3. Gets a quiz question from your Python '/quiz/<id>' endpoint
+/**
+ * Gets a quiz question from the Python '/quiz/<id>' endpoint and formats options as A, B, C, D.
+ */
 async function getQuizQuestion(questionId) {
     try {
         const response = await fetch(`${API_URL}/quiz/${questionId}`);
@@ -80,10 +87,14 @@ async function getQuizQuestion(questionId) {
             return;
         }
 
-        // Display the question and options
-        let questionText = `Question: ${data.question}\nOptions:\n`;
-        data.options.forEach(option => {
-            questionText += `- ${option}\n`;
+        // --- NEW LOGIC: Display options with A, B, C, D prefixes ---
+        let questionText = `Question: ${data.question}\n\nChoose an option (A, B, C, D):\n`;
+        const letters = ['A', 'B', 'C', 'D'];
+        
+        data.options.forEach((option, index) => {
+            if (index < letters.length) { 
+                questionText += `${letters[index]}) ${option}\n`;
+            }
         });
         
         addMessageToChat(questionText, 'bot');
@@ -93,11 +104,13 @@ async function getQuizQuestion(questionId) {
 
     } catch (error) {
         console.error('Error getting quiz question:', error);
+        addMessageToChat('Failed to load the quiz question.', 'bot');
     }
 }
 
-// 4. Submits an answer to your Python '/submit_answer' endpoint
-// --- REPLACE IT WITH THIS ---
+/**
+ * Submits an answer (A, B, C, or D) to the Python '/submit_answer' endpoint.
+ */
 async function submitQuizAnswer(userAnswer) {
     try {
         const response = await fetch(`${API_URL}/submit_answer`, {
@@ -111,12 +124,11 @@ async function submitQuizAnswer(userAnswer) {
 
         const data = await response.json();
         
-        // 1. Display the feedback (e.g., "Correct! Great job.")
+        // 1. Display the feedback 
         addMessageToChat(data.feedback, 'bot');
 
         // 2. Check if the answer was correct
         if (data.correct) {
-            // --- THIS IS THE NEW LOGIC ---
             
             // Get the number from the current question ID (e.g., "q1" -> 1)
             const currentNum = parseInt(currentQuestionId.replace('q', ''));
@@ -129,40 +141,47 @@ async function submitQuizAnswer(userAnswer) {
                 addMessageToChat("Congratulations! You've completed all 10 questions!", 'bot');
                 currentQuestionId = null; // Quiz is over, reset.
             } else {
-                // It's not over, so get the next question ID (e.g., "q2")
+                // Get the next question ID (e.g., "q2")
                 const nextQuestionId = 'q' + nextNum;
                 
                 // Wait 1 second for a natural feel, then show the next question
                 setTimeout(() => {
                     addMessageToChat("Here's your next question:", 'bot');
                     getQuizQuestion(nextQuestionId); // This will fetch q2, q3, etc.
-                }, 1000); // 1000ms = 1 second delay
+                }, 1000); 
             }
-            // --- END OF NEW LOGIC ---
 
-        } else {
-            // Answer was wrong. Reset the quiz state.
-            addMessageToChat('Sorry, that was incorrect. The quiz is over. Type "quiz" to try again.', 'bot');
+        } else if (!data.correct && data.error === undefined) {
+            // Answer was wrong or invalid. Reset the quiz state only if it's a defined end-of-quiz state.
+            // The backend sends specific feedback, so we just reset the state.
+            addMessageToChat('Quiz ended. Type "quiz" to try again.', 'bot');
             currentQuestionId = null;
+        } else {
+            // If the backend sent an error message (like invalid input), we don't reset the state 
+            // and let the user try again for the same question.
         }
 
     } catch (error) {
         console.error('Error submitting answer:', error);
+        addMessageToChat('Failed to submit answer due to a network error.', 'bot');
     }
 }
 
 // --- Utility Function ---
 
-// Adds a new message to the chat window UI
+/**
+ * Adds a new message to the chat window UI and scrolls to the bottom.
+ */
 function addMessageToChat(message, sender) {
     // Create a new 'div' element
     const messageElement = document.createElement('div');
     
-    // Add CSS classes
+    // Add CSS classes (these map to the classes in index.html)
     messageElement.classList.add('message');
     messageElement.classList.add(sender); // 'user' or 'bot'
     
     // Set the text, replacing newline characters with HTML breaks
+    // (We use innerHTML because the quiz question has multiple line breaks)
     messageElement.innerHTML = message.replace(/\n/g, '<br>');
     
     // Add the new message to the chat window
@@ -171,4 +190,3 @@ function addMessageToChat(message, sender) {
     // Scroll to the bottom
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
-
