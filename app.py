@@ -38,7 +38,17 @@ except Exception as e:
 # Get a reference to the Firestore database
 db = firestore.client()
 
-# ... (rest of your Flask routes) ...
+# --- New Route for the Landing Page ---
+@app.route('/', methods=['GET'])
+def home():
+    """
+    Simple route to confirm the API is running when hitting the root URL.
+    """
+    return jsonify({
+        "status": "API Running",
+        "message": "This is the backend API. Please use the /chat or /quiz routes.",
+        "version": "1.0"
+    })
 
 # --- 1. Chatbot Engine ---
 # This part handles the "Chatbot Engine" from your proposal
@@ -157,3 +167,4 @@ if __name__ == '__main__':
     # Sets the host to '0.0.0.0' to make it accessible on your network
 
     app.run(host='0.0.0.0', port=5000, debug=True)    
+
