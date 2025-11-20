@@ -176,9 +176,83 @@ def submit_answer():
         # Log the full error to the Render console for debugging
         print(f"Error processing submit_answer: {e}") 
         return jsonify({"error": "An internal server error occurred during answer evaluation."}), 500
+# --- 4. Leaderboard Module (Score Submission) ---
 
+@app.route('/score', methods=['POST'])
+def submit_score():
+    """
+    Submits the final score and stores the best result for a user in Firestore.
+    Collection: 'leaderboard'
+    """
+    data = request.json
+    user_id = data.get('userId')
+    username = data.get('username', 'Anonymous')
+    score = data.get('score')
+    total = data.get('total')
+    
+    if not user_id or score is None or total is None:
+        return jsonify({"error": "Missing user_id, score, or total."}), 400
+
+    try:
+        leaderboard_ref = db.collection('leaderboard').document(user_id)
+        current_data = leaderboard_ref.get()
+        
+        # Check for existing score and only update if the new score is better
+        if current_data.exists:
+            current_score_data = current_data.to_dict()
+            current_best_score = current_score_data.get('score', 0)
+            
+            if score <= current_best_score:
+                return jsonify({"message": f"Score {score}/{total} recorded. Not a new high score."})
+
+        # Submit or update the new high score
+        leaderboard_ref.set({
+            'userId': user_id,
+            'username': username,
+            'score': score,
+            'total': total,
+            'timestamp': firestore.SERVER_TIMESTAMP # Use server timestamp for sorting
+        })
+        
+        return jsonify({"message": f"New high score of {score}/{total} submitted successfully!"})
+
+    except Exception as e:
+        print(f"Error submitting score: {e}")
+        return jsonify({"error": "An internal server error occurred during score submission."}), 500
+
+# --- 5. Leaderboard Module (Retrieval) ---
+
+@app.route('/leaderboard', methods=['GET'])
+def get_leaderboard():
+    """
+    Fetches the top scores from Firestore, ordered by score (descending) 
+    and then by timestamp (ascending for tie-breaking).
+    """
+    try:
+        scores_ref = db.collection('leaderboard').order_by(
+            'score', direction=firestore.Query.DESCENDING
+        ).order_by(
+            'timestamp', direction=firestore.Query.ASCENDING
+        ).limit(10) # Limit to top 10 scores
+        
+        results = []
+        for doc in scores_ref.stream():
+            score_data = doc.to_dict()
+            # Ensure the structure matches what the frontend expects
+            results.append({
+                'username': score_data.get('username', 'Unknown'),
+                'score': score_data.get('score'),
+                'total': score_data.get('total')
+            })
+
+        return jsonify(results)
+
+    except Exception as e:
+        print(f"Error fetching leaderboard: {e}")
+        return jsonify({"error": "Failed to retrieve leaderboard."}), 500
 # --- Running the App ---
 
 if __name__ == '__main__':
     # This runs the app locally for development
     app.run(host='0.0.0.0', port=5000, debug=True)
+
