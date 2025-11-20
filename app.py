@@ -176,6 +176,7 @@ def submit_answer():
         # Log the full error to the Render console for debugging
         print(f"Error processing submit_answer: {e}") 
         return jsonify({"error": "An internal server error occurred during answer evaluation."}), 500
+
 # --- 4. Leaderboard Module (Score Submission) ---
 
 @app.route('/score', methods=['POST'])
@@ -202,6 +203,7 @@ def submit_score():
             current_score_data = current_data.to_dict()
             current_best_score = current_score_data.get('score', 0)
             
+            # Check if the new score is strictly better (higher)
             if score <= current_best_score:
                 return jsonify({"message": f"Score {score}/{total} recorded. Not a new high score."})
 
@@ -229,6 +231,7 @@ def get_leaderboard():
     and then by timestamp (ascending for tie-breaking).
     """
     try:
+        # Query Firestore: Order by score descending, then by submission time ascending (for tie-breaking)
         scores_ref = db.collection('leaderboard').order_by(
             'score', direction=firestore.Query.DESCENDING
         ).order_by(
@@ -238,7 +241,7 @@ def get_leaderboard():
         results = []
         for doc in scores_ref.stream():
             score_data = doc.to_dict()
-            # Ensure the structure matches what the frontend expects
+            # Construct the response object
             results.append({
                 'username': score_data.get('username', 'Unknown'),
                 'score': score_data.get('score'),
@@ -249,10 +252,11 @@ def get_leaderboard():
 
     except Exception as e:
         print(f"Error fetching leaderboard: {e}")
+        # Send an error JSON response so the frontend can handle it gracefully
         return jsonify({"error": "Failed to retrieve leaderboard."}), 500
+        
 # --- Running the App ---
 
 if __name__ == '__main__':
     # This runs the app locally for development
     app.run(host='0.0.0.0', port=5000, debug=True)
-
