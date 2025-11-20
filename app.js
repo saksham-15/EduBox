@@ -14,6 +14,7 @@ const firebaseConfig = {
 
 // --- STATE ---
 let currentQuestionId = null;
+let currentOptions = []; // <--- NEW: Stores options to handle manual typing
 let quizScore = 0;
 let totalQuestions = 0;
 let userId = null;
@@ -46,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     anonymousBtn.addEventListener('click', () => auth.signInAnonymously().catch(e => displayAuthError(e.message)));
     logoutBtn.addEventListener('click', () => auth.signOut());
 
-    // --- HANDLES LOGIN & SIGNUP ---
+    // --- AUTH HANDLER ---
     async function handleAuth(type) {
         const name = usernameInput.value.trim();
         const pass = passwordInput.value.trim();
@@ -55,22 +56,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!name) throw new Error("Username required");
             if (type === 'signup') {
                 if (pass.length < 6) throw new Error("Password must be 6+ chars");
-                
-                // 1. Create User
                 const cred = await auth.createUserWithEmailAndPassword(email, pass);
-                
-                // 2. Update Name IMMEDIATELY
                 await cred.user.updateProfile({ displayName: name });
-                
-                // 3. Force Update Local State to prevent "Anonymous" glitch
                 username = name;
                 userDisplay.textContent = `User: ${username}`;
-                
-                // Clear chat and welcome user
                 chatWindow.innerHTML = ''; 
                 addMessageToChat(`<strong>Welcome ${username}!</strong><br>Type 'quiz' to start.`, 'bot');
                 fetchLeaderboard();
-
             } else {
                 await auth.signInWithEmailAndPassword(email, pass);
             }
@@ -83,26 +75,20 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => authErrors.classList.add('d-none'), 5000);
     }
 
-    // --- AUTH STATE CHANGE ---
     auth.onAuthStateChanged((user) => {
         if (user) {
             userId = user.uid;
-            // If coming from signup, 'username' might already be set correctly
             if (!username || username === 'Anonymous') {
                 username = user.displayName || 'Anonymous';
             }
             userDisplay.textContent = `User: ${username}`;
-            
             authScreen.style.display = 'none';
             mainApp.style.display = 'flex';
-            
-            // Only clear/fetch if the chat is empty (fresh load or fresh login)
             if (chatWindow.innerHTML === "") {
                  fetchLeaderboard();
                  addMessageToChat(`<strong>Welcome ${username}!</strong><br>Type 'quiz' to start.`, 'bot');
             }
         } else {
-            // Reset everything on logout
             userId = null;
             username = null;
             authScreen.style.display = 'flex';
@@ -124,7 +110,23 @@ document.addEventListener('DOMContentLoaded', () => {
         chatInput.value = '';
 
         if (currentQuestionId) {
-            await submitQuizAnswer(text);
+            // --- NEW: Handle Manual Typing (A, B, C, D) ---
+            // If user types "b" or "B", we map it to the full answer text
+            const lowerText = text.toLowerCase();
+            if (lowerText.length === 1 && ['a','b','c','d'].includes(lowerText)) {
+                const map = {'a': 0, 'b': 1, 'c': 2, 'd': 3};
+                const index = map[lowerText];
+                if (currentOptions && currentOptions[index]) {
+                    // Send the FULL TEXT (e.g., "DynamoDB") instead of "b"
+                    await submitQuizAnswer(currentOptions[index]);
+                } else {
+                    // Fallback
+                    await submitQuizAnswer(text);
+                }
+            } else {
+                // User typed the full word manually
+                await submitQuizAnswer(text);
+            }
         } else {
             await sendChatMessage(text);
         }
@@ -159,6 +161,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.error) { return addMessageToChat(data.error, 'bot'); }
 
             currentQuestionId = data.id;
+            currentOptions = data.options; // <--- NEW: Save options for manual typing check
+            
             addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
 
             if (data.options && data.options.length > 0) {
@@ -183,7 +187,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         this.classList.remove('opacity-50', 'btn-outline-light');
                         this.classList.add('btn-primary', 'text-white');
                         
-                        // Sending the Option Text (e.g., "DynamoDB")
                         submitQuizAnswer(opt); 
                     };
                     btnContainer.appendChild(btn);
