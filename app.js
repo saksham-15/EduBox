@@ -37,7 +37,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoutBtn = document.getElementById('logout-btn');
     const anonymousBtn = document.getElementById('anonymous-btn');
 
-    // Initialize Firebase
     const app = firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
 
@@ -47,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     anonymousBtn.addEventListener('click', () => auth.signInAnonymously().catch(e => displayAuthError(e.message)));
     logoutBtn.addEventListener('click', () => auth.signOut());
 
+    // --- HANDLES LOGIN & SIGNUP ---
     async function handleAuth(type) {
         const name = usernameInput.value.trim();
         const pass = passwordInput.value.trim();
@@ -55,8 +55,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!name) throw new Error("Username required");
             if (type === 'signup') {
                 if (pass.length < 6) throw new Error("Password must be 6+ chars");
+                
+                // 1. Create User
                 const cred = await auth.createUserWithEmailAndPassword(email, pass);
+                
+                // 2. Update Name IMMEDIATELY
                 await cred.user.updateProfile({ displayName: name });
+                
+                // 3. Force Update Local State to prevent "Anonymous" glitch
+                username = name;
+                userDisplay.textContent = `User: ${username}`;
+                
+                // Clear chat and welcome user
+                chatWindow.innerHTML = ''; 
+                addMessageToChat(`<strong>Welcome ${username}!</strong><br>Type 'quiz' to start.`, 'bot');
+                fetchLeaderboard();
+
             } else {
                 await auth.signInWithEmailAndPassword(email, pass);
             }
@@ -69,32 +83,35 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => authErrors.classList.add('d-none'), 5000);
     }
 
-    // --- CRITICAL CHANGE: Chat Clearing Logic Here ---
+    // --- AUTH STATE CHANGE ---
     auth.onAuthStateChanged((user) => {
         if (user) {
             userId = user.uid;
-            username = user.displayName || 'Anonymous';
+            // If coming from signup, 'username' might already be set correctly
+            if (!username || username === 'Anonymous') {
+                username = user.displayName || 'Anonymous';
+            }
             userDisplay.textContent = `User: ${username}`;
             
             authScreen.style.display = 'none';
             mainApp.style.display = 'flex';
             
-            // 1. CLEAR PREVIOUS CHAT HISTORY
-            chatWindow.innerHTML = ''; 
-            
-            // 2. Fetch Leaderboard immediately
-            fetchLeaderboard();
-            
-            addMessageToChat(`<strong>Welcome ${username}!</strong><br>Type 'quiz' to start.`, 'bot');
+            // Only clear/fetch if the chat is empty (fresh load or fresh login)
+            if (chatWindow.innerHTML === "") {
+                 fetchLeaderboard();
+                 addMessageToChat(`<strong>Welcome ${username}!</strong><br>Type 'quiz' to start.`, 'bot');
+            }
         } else {
+            // Reset everything on logout
             userId = null;
+            username = null;
             authScreen.style.display = 'flex';
             mainApp.style.display = 'none';
-            chatWindow.innerHTML = ''; // Clear on logout too
+            chatWindow.innerHTML = ''; 
         }
     });
 
-    // --- CHAT LOGIC ---
+    // --- CHAT & QUIZ ENGINE ---
     sendButton.addEventListener('click', sendMessage);
     chatInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') sendMessage(); });
 
@@ -165,6 +182,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         this.classList.remove('opacity-50', 'btn-outline-light');
                         this.classList.add('btn-primary', 'text-white');
+                        
+                        // Sending the Option Text (e.g., "DynamoDB")
                         submitQuizAnswer(opt); 
                     };
                     btnContainer.appendChild(btn);
@@ -214,8 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function submitFinalScore(s, t) {
-        // Prevent anonymous score saving to keep leaderboard clean
-        if (!userId || username === 'Anonymous' || username.includes('Anonymous')) {
+        if (!userId || !username || username === 'Anonymous' || username.includes('Anonymous')) {
             addMessageToChat("Sign in to save your score to the leaderboard!", 'bot');
             return;
         }
@@ -226,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, username, score: s, total: t })
             });
-            fetchLeaderboard(); // Refresh leaderboard after saving
+            fetchLeaderboard(); 
         } catch (e) { console.error(e); }
     }
 
