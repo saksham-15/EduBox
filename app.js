@@ -21,6 +21,7 @@ let userId = null;
 let username = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+    // DOM Elements
     const authScreen = document.getElementById('auth-screen');
     const mainApp = document.getElementById('main-app');
     const chatWindow = document.getElementById('chat-window');
@@ -30,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const leaderboardList = document.getElementById('leaderboard-list');
     const authErrors = document.getElementById('auth-errors');
     
-    // Auth Buttons
+    // Auth Inputs
     const usernameInput = document.getElementById('username-input');
     const passwordInput = document.getElementById('password-input');
     const loginBtn = document.getElementById('login-btn');
@@ -38,8 +39,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoutBtn = document.getElementById('logout-btn');
     const anonymousBtn = document.getElementById('anonymous-btn');
 
+    // Initialize Firebase & Database
     const app = firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
+    const db = firebase.firestore(); // <--- CONNECTING TO DATABASE
 
     // --- AUTH LISTENERS ---
     loginBtn.addEventListener('click', () => handleAuth('login'));
@@ -110,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatInput.value = '';
 
         if (currentQuestionId) {
-            // Handle Manual Typing (A, B, C, D)
+            // Manual Typing Logic (A, B, C, D)
             const lowerText = text.toLowerCase();
             if (lowerText.length === 1 && ['a','b','c','d'].includes(lowerText)) {
                 const map = {'a': 0, 'b': 1, 'c': 2, 'd': 3};
@@ -195,7 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- LOGIC UPDATED HERE: No Sudden Death ---
     async function submitQuizAnswer(ans) {
         try {
             const res = await fetch(`${API_URL}/submit_answer`, {
@@ -212,9 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 quizScore++;
             }
             
-            // ALWAYS continue to next question, even if wrong
             const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
-            
             if (nextNum > TOTAL_QUESTIONS_COUNT) {
                 endQuiz();
             } else {
@@ -230,47 +230,61 @@ document.addEventListener('DOMContentLoaded', () => {
         await submitFinalScore(quizScore, TOTAL_QUESTIONS_COUNT);
     }
 
+    // --- UPDATED: Save to Firebase Firestore (Permanent) ---
     async function submitFinalScore(s, t) {
-        // Only save score if user is signed in
         if (!userId || !username || username === 'Anonymous' || username.includes('Anonymous')) {
             addMessageToChat("Sign in to save your score to the leaderboard!", 'bot');
             return;
         }
         
         try {
-            await fetch(`${API_URL}/score`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, username, score: s, total: t })
+            // Save to "leaderboard" collection in Firebase
+            await db.collection('leaderboard').add({
+                username: username,
+                score: s,
+                total: t,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
             });
             fetchLeaderboard(); 
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error("Error saving score:", e);
+            addMessageToChat("Error saving score to database.", 'bot');
+        }
     }
 
+    // --- UPDATED: Read from Firebase Firestore (Permanent) ---
     async function fetchLeaderboard() {
         try {
-            const res = await fetch(`${API_URL}/leaderboard`);
-            if (!res.ok) throw new Error("Backend not updated");
+            // Get top 10 scores ordered by 'score' descending
+            const snapshot = await db.collection('leaderboard')
+                                     .orderBy('score', 'desc')
+                                     .limit(10)
+                                     .get();
 
-            const scores = await res.json();
             leaderboardList.innerHTML = '';
             
-            if (scores.length === 0) {
+            if (snapshot.empty) {
                 leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-muted">No scores yet.</li>';
                 return;
             }
 
-            scores.forEach((s, i) => {
+            let rank = 0;
+            snapshot.forEach(doc => {
+                const s = doc.data();
                 const li = document.createElement('li');
                 li.className = 'list-group-item bg-dark d-flex justify-content-between text-light border-secondary';
-                let icon = i===0?'🥇':i===1?'🥈':i===2?'🥉':'•';
-                // --- Fix for Cyan Color applied in CSS, keeping structure here simple ---
+                
+                let icon = rank===0?'🥇':rank===1?'🥈':rank===2?'🥉':'•';
                 li.innerHTML = `<div>${icon} ${s.username}</div><span class="badge bg-primary rounded-pill">${s.score}/${s.total}</span>`;
+                
+                // Style override included in HTML, but class remains for structure
                 leaderboardList.appendChild(li);
+                rank++;
             });
         } catch (e) { 
             console.error("Leaderboard error", e);
-            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">Leaderboard Unavailable</li>';
+            // If this fails, it usually means Firestore isn't enabled in console
+            leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">DB Error (Check Console)</li>';
         }
     }
 
