@@ -129,67 +129,65 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function getQuizQuestion(qid) {
-        console.log(`Fetching question: ${qid}`);
-        try {
-            const res = await fetch(`${API_URL}/quiz/${qid}`);
-            const data = await res.json();
+    // DELETE the old getQuizQuestion function and PASTE this one:
 
-            if (data.error) { return addMessageToChat(data.error, 'bot'); }
+async function getQuizQuestion(qid) {
+    console.log(`Fetching question: ${qid}`);
+    try {
+        const res = await fetch(`${API_URL}/quiz/${qid}`);
+        const data = await res.json();
 
-            currentQuestionId = data.id;
+        if (data.error) { return addMessageToChat(data.error, 'bot'); }
+
+        currentQuestionId = data.id;
+        
+        // 1. Show the question text
+        addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
+
+        // 2. Render the Buttons
+        if (data.options && data.options.length > 0) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'options-container'; 
             
-            // 1. Show the question text
-            addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'd-grid gap-2'; 
 
-            // 2. Show the Options (Fixed UI & Logic)
-            if (data.options && data.options.length > 0) {
+            const letters = ['A', 'B', 'C', 'D'];
+            
+            data.options.forEach((opt, i) => {
+                if (i > 3) return;
+                const btn = document.createElement('button');
+                // Standard white outline style
+                btn.className = 'btn btn-outline-light text-start border-secondary text-light'; 
+                btn.innerText = `${letters[i]}) ${opt}`;
                 
-                // Create a wrapper that looks like a bot message (aligns left)
-                const wrapper = document.createElement('div');
-                wrapper.className = 'message bot options-container'; 
-                wrapper.style.backgroundColor = 'transparent'; // Transparent so buttons pop
-                wrapper.style.padding = '0'; // Remove padding for button container
-
-                const btnContainer = document.createElement('div');
-                btnContainer.className = 'd-grid gap-2'; // Stack buttons vertically
-
-                const letters = ['A', 'B', 'C', 'D'];
-                
-                data.options.forEach((opt, i) => {
-                    if (i > 3) return;
-                    const btn = document.createElement('button');
+                btn.onclick = function() {
+                    // Disable others
+                    Array.from(btnContainer.children).forEach(b => {
+                        b.disabled = true; 
+                        b.classList.add('opacity-50');
+                    });
                     
-                    // Style: Outline buttons
-                    btn.className = 'btn btn-outline-light text-start border-secondary text-light'; 
-                    btn.innerText = `${letters[i]}) ${opt}`;
+                    // Highlight Selected
+                    this.classList.remove('opacity-50', 'btn-outline-light');
+                    this.classList.add('btn-primary', 'text-white');
                     
-                    btn.onclick = function() {
-                        // Visual feedback: Grey out others
-                        Array.from(btnContainer.children).forEach(b => {
-                            b.disabled = true; 
-                            b.classList.add('opacity-50');
-                        });
-                        
-                        // Highlight selected
-                        this.classList.remove('opacity-50', 'btn-outline-light');
-                        this.classList.add('btn-primary', 'text-white');
-                        
-                        // LOGIC FIX: Send 'opt' (the text) instead of letters[i]
-                        // We assume backend expects the Value ("DynamoDB"), not "B"
-                        submitQuizAnswer(opt); 
-                    };
-                    btnContainer.appendChild(btn);
-                });
+                    // --------------- CRITICAL FIX ---------------
+                    // We send 'opt' (e.g., "DynamoDB"), NOT letters[i] (e.g., "B")
+                    submitQuizAnswer(opt); 
+                    // --------------------------------------------
+                };
+                btnContainer.appendChild(btn);
+            });
 
-                wrapper.appendChild(btnContainer);
-                chatWindow.appendChild(wrapper);
-                chatWindow.scrollTop = chatWindow.scrollHeight;
-            } 
-        } catch (e) {
-            console.error("Error getting question:", e);
-        }
+            wrapper.appendChild(btnContainer);
+            chatWindow.appendChild(wrapper);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        } 
+    } catch (e) {
+        console.error("Error getting question:", e);
     }
+}
     async function submitQuizAnswer(ans) {
         totalQuestions++;
         try {
@@ -261,4 +259,5 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 });
+
 
