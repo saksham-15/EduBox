@@ -138,45 +138,58 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.error) { return addMessageToChat(data.error, 'bot'); }
 
             currentQuestionId = data.id;
+            
+            // 1. Show the question text
             addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
 
-            // --- BUTTON RENDERING ---
-            const btnContainer = document.createElement('div');
-            btnContainer.className = 'd-grid gap-2 mt-2 mb-3'; // Bootstrap layout
-
+            // 2. Show the Options (Fixed UI & Logic)
             if (data.options && data.options.length > 0) {
+                
+                // Create a wrapper that looks like a bot message (aligns left)
+                const wrapper = document.createElement('div');
+                wrapper.className = 'message bot options-container'; 
+                wrapper.style.backgroundColor = 'transparent'; // Transparent so buttons pop
+                wrapper.style.padding = '0'; // Remove padding for button container
+
+                const btnContainer = document.createElement('div');
+                btnContainer.className = 'd-grid gap-2'; // Stack buttons vertically
+
                 const letters = ['A', 'B', 'C', 'D'];
+                
                 data.options.forEach((opt, i) => {
                     if (i > 3) return;
                     const btn = document.createElement('button');
-                    // IMPORTANT: These classes rely on Bootstrap being fixed in HTML
-                    btn.className = 'btn btn-outline-primary text-start'; 
+                    
+                    // Style: Outline buttons
+                    btn.className = 'btn btn-outline-light text-start border-secondary text-light'; 
                     btn.innerText = `${letters[i]}) ${opt}`;
                     
                     btn.onclick = function() {
-                        // Visual feedback
+                        // Visual feedback: Grey out others
                         Array.from(btnContainer.children).forEach(b => {
                             b.disabled = true; 
-                            b.classList.add('btn-outline-secondary');
-                            b.classList.remove('btn-outline-primary');
+                            b.classList.add('opacity-50');
                         });
-                        this.classList.remove('btn-outline-secondary');
+                        
+                        // Highlight selected
+                        this.classList.remove('opacity-50', 'btn-outline-light');
                         this.classList.add('btn-primary', 'text-white');
                         
-                        submitQuizAnswer(letters[i]);
+                        // LOGIC FIX: Send 'opt' (the text) instead of letters[i]
+                        // We assume backend expects the Value ("DynamoDB"), not "B"
+                        submitQuizAnswer(opt); 
                     };
                     btnContainer.appendChild(btn);
                 });
-                chatWindow.appendChild(btnContainer);
+
+                wrapper.appendChild(btnContainer);
+                chatWindow.appendChild(wrapper);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
-            } else {
-                console.error("No options received from API", data);
-            }
+            } 
         } catch (e) {
             console.error("Error getting question:", e);
         }
     }
-
     async function submitQuizAnswer(ans) {
         totalQuestions++;
         try {
@@ -248,3 +261,4 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 });
+
