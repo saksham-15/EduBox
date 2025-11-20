@@ -214,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToChat(`<span class="${feedbackColor}"><strong>${data.feedback}</strong></span>`, 'bot');
 
             if (data.correct) {
+                // If Correct: Move to next question
                 quizScore++;
                 const nextNum = parseInt(currentQuestionId.replace('q','')) + 1;
                 if (nextNum > 10) {
@@ -221,10 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     setTimeout(() => getQuizQuestion('q' + nextNum), 1500);
                 }
-            } else if (data.feedback.includes("over")) {
+            } else {
                 endQuiz();
-            } else if (data.feedback.includes("Invalid")) {
-                totalQuestions--; 
             }
         } catch (e) { console.error(e); }
     }
@@ -280,3 +279,4 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 });
+
