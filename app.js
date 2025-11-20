@@ -69,19 +69,28 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => authErrors.classList.add('d-none'), 5000);
     }
 
+    // --- CRITICAL CHANGE: Chat Clearing Logic Here ---
     auth.onAuthStateChanged((user) => {
         if (user) {
             userId = user.uid;
             username = user.displayName || 'Anonymous';
             userDisplay.textContent = `User: ${username}`;
+            
             authScreen.style.display = 'none';
             mainApp.style.display = 'flex';
+            
+            // 1. CLEAR PREVIOUS CHAT HISTORY
+            chatWindow.innerHTML = ''; 
+            
+            // 2. Fetch Leaderboard immediately
             fetchLeaderboard();
+            
             addMessageToChat(`<strong>Welcome ${username}!</strong><br>Type 'quiz' to start.`, 'bot');
         } else {
             userId = null;
             authScreen.style.display = 'flex';
             mainApp.style.display = 'none';
+            chatWindow.innerHTML = ''; // Clear on logout too
         }
     });
 
@@ -97,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
         addMessageToChat(text, 'user');
         chatInput.value = '';
 
-        // If currently in a quiz, any text is an answer (fallback)
         if (currentQuestionId) {
             await submitQuizAnswer(text);
         } else {
@@ -115,11 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             addMessageToChat(data.reply, 'bot');
 
-            // --- FIXED TRIGGER LOGIC ---
-            // Check if the bot is starting a quiz. We check for keywords.
             const reply = data.reply.toLowerCase();
             if (reply.includes("first question") || reply.includes("question 1")) {
-                console.log("Quiz Trigger Detected!"); // Check your console for this
                 quizScore = 0;
                 totalQuestions = 0;
                 await getQuizQuestion('q1');
@@ -129,65 +134,50 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // DELETE the old getQuizQuestion function and PASTE this one:
+    async function getQuizQuestion(qid) {
+        try {
+            const res = await fetch(`${API_URL}/quiz/${qid}`);
+            const data = await res.json();
 
-async function getQuizQuestion(qid) {
-    console.log(`Fetching question: ${qid}`);
-    try {
-        const res = await fetch(`${API_URL}/quiz/${qid}`);
-        const data = await res.json();
+            if (data.error) { return addMessageToChat(data.error, 'bot'); }
 
-        if (data.error) { return addMessageToChat(data.error, 'bot'); }
+            currentQuestionId = data.id;
+            addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
 
-        currentQuestionId = data.id;
-        
-        // 1. Show the question text
-        addMessageToChat(`<strong>Question:</strong> ${data.question}`, 'bot');
-
-        // 2. Render the Buttons
-        if (data.options && data.options.length > 0) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'options-container'; 
-            
-            const btnContainer = document.createElement('div');
-            btnContainer.className = 'd-grid gap-2'; 
-
-            const letters = ['A', 'B', 'C', 'D'];
-            
-            data.options.forEach((opt, i) => {
-                if (i > 3) return;
-                const btn = document.createElement('button');
-                // Standard white outline style
-                btn.className = 'btn btn-outline-light text-start border-secondary text-light'; 
-                btn.innerText = `${letters[i]}) ${opt}`;
+            if (data.options && data.options.length > 0) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'options-container'; 
                 
-                btn.onclick = function() {
-                    // Disable others
-                    Array.from(btnContainer.children).forEach(b => {
-                        b.disabled = true; 
-                        b.classList.add('opacity-50');
-                    });
-                    
-                    // Highlight Selected
-                    this.classList.remove('opacity-50', 'btn-outline-light');
-                    this.classList.add('btn-primary', 'text-white');
-                    
-                    // --------------- CRITICAL FIX ---------------
-                    // We send 'opt' (e.g., "DynamoDB"), NOT letters[i] (e.g., "B")
-                    submitQuizAnswer(opt); 
-                    // --------------------------------------------
-                };
-                btnContainer.appendChild(btn);
-            });
+                const btnContainer = document.createElement('div');
+                btnContainer.className = 'd-grid gap-2'; 
 
-            wrapper.appendChild(btnContainer);
-            chatWindow.appendChild(wrapper);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        } 
-    } catch (e) {
-        console.error("Error getting question:", e);
+                const letters = ['A', 'B', 'C', 'D'];
+                data.options.forEach((opt, i) => {
+                    if (i > 3) return;
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-outline-light text-start border-secondary text-light'; 
+                    btn.innerText = `${letters[i]}) ${opt}`;
+                    
+                    btn.onclick = function() {
+                        Array.from(btnContainer.children).forEach(b => {
+                            b.disabled = true; 
+                            b.classList.add('opacity-50');
+                        });
+                        this.classList.remove('opacity-50', 'btn-outline-light');
+                        this.classList.add('btn-primary', 'text-white');
+                        submitQuizAnswer(opt); 
+                    };
+                    btnContainer.appendChild(btn);
+                });
+                wrapper.appendChild(btnContainer);
+                chatWindow.appendChild(wrapper);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            } 
+        } catch (e) {
+            console.error("Error getting question:", e);
+        }
     }
-}
+
     async function submitQuizAnswer(ans) {
         totalQuestions++;
         try {
@@ -198,7 +188,6 @@ async function getQuizQuestion(qid) {
             });
             const data = await res.json();
             
-            // Show feedback
             let feedbackColor = data.correct ? 'text-success' : 'text-danger';
             addMessageToChat(`<span class="${feedbackColor}"><strong>${data.feedback}</strong></span>`, 'bot');
 
@@ -213,7 +202,7 @@ async function getQuizQuestion(qid) {
             } else if (data.feedback.includes("over")) {
                 endQuiz();
             } else if (data.feedback.includes("Invalid")) {
-                totalQuestions--; // Don't count invalid inputs
+                totalQuestions--; 
             }
         } catch (e) { console.error(e); }
     }
@@ -225,14 +214,19 @@ async function getQuizQuestion(qid) {
     }
 
     async function submitFinalScore(s, t) {
-        if (!userId || username === 'Anonymous') return;
+        // Prevent anonymous score saving to keep leaderboard clean
+        if (!userId || username === 'Anonymous' || username.includes('Anonymous')) {
+            addMessageToChat("Sign in to save your score to the leaderboard!", 'bot');
+            return;
+        }
+        
         try {
             await fetch(`${API_URL}/score`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, username, score: s, total: t })
             });
-            fetchLeaderboard();
+            fetchLeaderboard(); // Refresh leaderboard after saving
         } catch (e) { console.error(e); }
     }
 
@@ -241,6 +235,12 @@ async function getQuizQuestion(qid) {
             const res = await fetch(`${API_URL}/leaderboard`);
             const scores = await res.json();
             leaderboardList.innerHTML = '';
+            
+            if (scores.length === 0) {
+                leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-muted">No scores yet.</li>';
+                return;
+            }
+
             scores.forEach((s, i) => {
                 const li = document.createElement('li');
                 li.className = 'list-group-item bg-dark d-flex justify-content-between text-light border-secondary';
@@ -259,5 +259,3 @@ async function getQuizQuestion(qid) {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 });
-
-
