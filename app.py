@@ -27,7 +27,7 @@ QUIZ_DATA = {
 
 @app.route('/')
 def home():
-    return jsonify({"status": "API Active", "message": "EduBox Backend Running"})
+    return render_template('index.html')
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -92,4 +92,5 @@ def get_leaderboard():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
