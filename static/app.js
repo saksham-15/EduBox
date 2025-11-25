@@ -1,5 +1,6 @@
 // --- CONFIGURATION ---
-const API_URL = 'https://edubox-0d1v.onrender.com';
+// Leave empty so it uses the same domain as the website (no CORS issues)
+const API_URL = ''; 
 const TOTAL_QUESTIONS_COUNT = 10; 
 
 // Firebase Config
@@ -42,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize Firebase & Database
     const app = firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
-    const db = firebase.firestore(); // <--- CONNECTING TO DATABASE
+    const db = firebase.firestore(); 
 
     // --- AUTH LISTENERS ---
     loginBtn.addEventListener('click', () => handleAuth('login'));
@@ -133,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function sendChatMessage(message) {
         try {
+            // Using relative path /chat
             const res = await fetch(`${API_URL}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -230,7 +232,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await submitFinalScore(quizScore, TOTAL_QUESTIONS_COUNT);
     }
 
-    // --- UPDATED: Save to Firebase Firestore (Permanent) ---
     async function submitFinalScore(s, t) {
         if (!userId || !username || username === 'Anonymous' || username.includes('Anonymous')) {
             addMessageToChat("Sign in to save your score to the leaderboard!", 'bot');
@@ -252,7 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- UPDATED: Read from Firebase Firestore (Permanent) ---
     async function fetchLeaderboard() {
         try {
             // Get top 10 scores ordered by 'score' descending
@@ -277,13 +277,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 let icon = rank===0?'🥇':rank===1?'🥈':rank===2?'🥉':'•';
                 li.innerHTML = `<div>${icon} ${s.username}</div><span class="badge bg-primary rounded-pill">${s.score}/${s.total}</span>`;
                 
-                // Style override included in HTML, but class remains for structure
                 leaderboardList.appendChild(li);
                 rank++;
             });
         } catch (e) { 
             console.error("Leaderboard error", e);
-            // If this fails, it usually means Firestore isn't enabled in console
             leaderboardList.innerHTML = '<li class="list-group-item bg-dark text-danger">DB Error (Check Console)</li>';
         }
     }
